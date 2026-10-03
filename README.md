@@ -1,30 +1,35 @@
 # 🌐 Muse Multi-VM Mesh Tunnel & 9Router Hub
 
-Sistem otomatisasi penuh untuk menghubungkan beberapa instans **VM Muse Spark (Hatch Runtime)** ke satu pusat gateway **9Router** menggunakan metode **SSH Reverse Tunnel** yang dilindungi oleh **Cloudflare Access**.
+> **Solusi 1-Klik Zero-Touch** untuk menghubungkan banyak VM AI Worker ke satu gateway pusat **9Router** menggunakan **SSH Reverse Tunnel** yang aman, otomatis pulih, dan tahan banting.
 
 ---
 
-## ⚡ PANDUAN CEPAT (HANYA 2 LANGKAH)
+### ✨ Apa yang Dilakukan Alat Ini?
+- 🔗 **Menghubungkan VM Tanpa IP Publik**: Worker VM bisa berada di mana saja (NAT, VPS kecil, sandbox) tanpa perlu buka port atau sewa domain baru.
+- 🤖 **Auto-Install AI Bridge**: Otomatis memasang dan menjalankan `muse-bridge` di worker.
+- ⚡ **Auto-Register 9Router**: Worker otomatis mendaftarkan dirinya sendiri ke dashboard 9Router di server utama.
+- 🛡️ **Watchdog 1-Menit (Anti-Rontok)**: Memeriksa koneksi tiap 60 detik. Jika putus atau VM di-replace/restart oleh provider, sistem akan otomatis pulih sendiri!
+
+---
+
+## 🚀 Panduan Cepat (Hanya 2 Langkah)
 
 ```
-[1. VM Utama (VM 1)]                 [2. VM Worker (VM 2, 3, dst.)]
+[1. VM Utama (Hub)]                  [2. VM Worker Baru]
 Jalankan setup-hub.sh ──► Dapat Token ──► Jalankan setup-worker.sh ──► SELESAI!
 ```
 
 ---
 
-### 1️⃣ LANGKAH 1: Di VM Utama (VM 1 - Central Hub)
+### 1️⃣ Langkah 1: Di Server Utama (VM 1 - Hub 9Router)
 
-Buka terminal di **VM 1**, lalu jalankan perintah ini:
+Buka terminal di server utama Anda, lalu salin dan jalankan perintah ini:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-hub.sh | bash
 ```
 
-**Apa yang terjadi?**
-- Skrip otomatis menyiapkan folder SSH, membuat **Kunci Induk (Master Mesh Key)**, memasang gembok ke `authorized_keys` (root & hatch), dan mengamankannya ke `recover.sh` (anti-VM replace).
-- Di akhir eksekusi, terminal akan menampilkan **KOTAK TOKEN BESAR**:
-
+Terminal akan menyiapkan kunci keamanan dan mencetak **KOTAK TOKEN**:
 ```text
 ======================================================================
 🔑 SALIN TOKEN KUNCI INDUK DI BAWAH INI:
@@ -32,66 +37,47 @@ curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/mai
 LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbG...
 ----------------------------------------------------------------------
 ```
-👉 **Salin token teks tersebut.** Token ini adalah anak kunci yang Anda gunakan untuk mengaktifkan semua VM Worker berikutnya.
+👉 **Salin token teks tersebut.** Anda akan menggunakannya di setiap VM Worker baru.
 
 ---
 
-### 2️⃣ LANGKAH 2: Di VM Worker Baru (VM 2, VM 3, VM 4, dst.)
+### 2️⃣ Langkah 2: Di VM Worker Baru (VM 2, VM 3, dst.)
 
-Buka terminal di VM Worker baru mana pun, lalu cukup jalankan perintah interaktif ini:
+Buka terminal di VM Worker mana pun, lalu cukup jalankan perintah ini:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash
 ```
 
-**Terminal akan menanyakan 3 hal:**
-1. **Nomor Worker** (misal: `2` untuk VM 2, `3` untuk VM 3)
-2. **Hostname SSH Hub VM 1** (misal: `ssh.yourdomain.com`)
-3. **Token Kunci Induk** (yang didapat dari Langkah 1)
+**Terminal akan menanyakan 3 hal mudah:**
+1. **Nomor Worker:** Ketik `2` (untuk VM 2), `3` (untuk VM 3), dst.
+2. **Domain SSH Hub:** Masukkan alamat SSH server utama Anda (contoh: `ssh.domainanda.com`).
+3. **Token Kunci:** Tempelkan token yang Anda salin dari Langkah 1.
 
-*(Atau jalankan langsung dengan parameter tanpa tanya-jawab:)*
+*(💡 Ingin langsung tanpa tanya jawab? Tambahkan parameternya langsung):*
 ```bash
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 2 "PASTE_TOKEN_DISINI" "ssh.yourdomain.com"
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 2 "TOKEN_ANDA" "ssh.domainanda.com"
 ```
 
-> 🎉 **Selesai!** Muse Bridge otomatis diinstal & diaktifkan di port 20129, terowongan langsung tersambung ke port `20130` di VM 1, dan otomatis didaftarkan ke 9Router!
+---
+
+### 🎉 Selesai! Apa yang Terjadi Otomatis?
+1. `muse-bridge` otomatis terpasang dan aktif di port lokal worker (`20129`).
+2. Terowongan Reverse SSH langsung membuka port khusus di server utama:
+   - **VM 2** ➔ Port **`20130`**
+   - **VM 3** ➔ Port **`20131`**
+   - **VM 4** ➔ Port **`20132`** *(dan seterusnya)*.
+3. Worker **otomatis terdaftar ke 9Router** di server utama.
+4. Anda bisa langsung membuka dashboard 9Router Anda (`https://9router.domainanda.com/ui`), klik tombol **Chat**, dan AI worker siap digunakan!
 
 ---
 
-## 📊 Pemetaan Port & Model di 9Router (VM 1)
-
-Setiap worker otomatis mendapatkan port forward mandiri di VM 1:
-
-| Worker Node | Perintah di Worker | Port Lokal di VM 1 | Model ID di 9Router |
-|---|---|---|---|
-| **VM 1** | `setup-hub.sh` | Port 20128 | Gateway 9Router Utama |
-| **VM 2** | `setup-worker.sh 2` | **`20130`** | `muse/muse-spark-vm2` |
-| **VM 3** | `setup-worker.sh 3` | **`20131`** | `muse/muse-spark-vm3` |
-| **VM 4** | `setup-worker.sh 4` | **`20132`** | `muse/muse-spark-vm4` |
-| **VM $N$** | `setup-worker.sh N` | **`20128 + N`** | `muse/muse-spark-vmN` |
-
----
-
-## 📌 Cara Cek Provider di Dashboard 9Router
-
-Setelah worker terhubung:
-1. Buka dashboard web 9Router di VM 1:  
-   👉 **`https://9router.yourdomain.com/ui`** (atau `http://127.0.0.1:20128/ui`)
-2. Masuk ke menu **Providers**:
-   Provider worker akan otomatis terdaftar dan berstatus **Connected**.
-3. Klik tombol **Chat** untuk langsung menguji respon AI dari worker terkait!
-
----
-
-## 🛡️ Fitur Anti "VM Replace" (Pemulihan Otomatis)
-
-Semua skrip di repositori ini mematuhi standar Hatch Runtime:
-- Semua konfigurasi disimpan di dalam `/home/hatch/`.
-- Setiap service otomatis didaftarkan ke `/home/hatch/workspace/vm-recovery/recover.sh`.
-- Dilengkapi **Watchdog Cron Tiap 1 Menit** yang otomatis memantau dan menghidupkan kembali service jika terputus.
-- Jika VM di-replace atau di-restart oleh provider, seluruh koneksi tunnel dan otorisasi SSH akan **pulih otomatis secara mandiri tanpa campur tangan manusia**.
+## 🛡️ Tahan Restart & VM Replacement (Self-Healing)
+Jika Anda menggunakan penyedia VPS/sandbox yang sering me-replace sistem (seperti Hatch Runtime):
+- Konfigurasi otomatis diamankan ke `/home/hatch/workspace/vm-recovery/recover.sh`.
+- Dilengkapi **Cron Watchdog tiap 1 menit** (`* * * * *`). Jika koneksi putus atau VM baru selesai reboot, sistem otomatis menyambung kembali dalam waktu kurang dari 60 detik tanpa perlu tindakan manual.
 
 ---
 
 ## 📄 Lisensi
-MIT License © 2026 bluudzz
+MIT License © 2026 bluudzz — Bebas digunakan dan dimodifikasi untuk kebutuhan komunitas.
