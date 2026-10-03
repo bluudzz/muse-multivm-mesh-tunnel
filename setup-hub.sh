@@ -4,7 +4,7 @@
 # Repositori: https://github.com/bluudzz/muse-multivm-mesh-tunnel
 # ==============================================================================
 # Menyiapkan konfigurasi SSH, membuat Kunci Induk (Master Mesh Key),
-# mengamankan ke recover.sh (anti-VM replace), dan mencetak TOKEN untuk Worker.
+# mengamankan ke authorized_keys root & hatch, serta recover.sh.
 # ==============================================================================
 set -e
 
@@ -19,12 +19,13 @@ echo -e "\n${CYAN}==============================================================
 echo -e "${CYAN}    🌐 MUSE MULTI-VM MESH TUNNEL: SETUP VM UTAMA (CENTRAL HUB 1)       ${NC}"
 echo -e "${CYAN}======================================================================${NC}\n"
 
-# 1. Pastikan folder .ssh ada
-mkdir -p /home/hatch/.ssh
-chmod 700 /home/hatch/.ssh
+# 1. Pastikan folder .ssh ada untuk root dan hatch
+mkdir -p /home/hatch/.ssh /root/.ssh
+chmod 700 /home/hatch/.ssh /root/.ssh
 
 KEY_PATH="/home/hatch/.ssh/id_mesh_master"
-AUTH_KEYS="/home/hatch/.ssh/authorized_keys"
+AUTH_HATCH="/home/hatch/.ssh/authorized_keys"
+AUTH_ROOT="/root/.ssh/authorized_keys"
 AUTH_BACKUP="/home/hatch/.ssh/authorized_keys_laptop"
 RECOVER_SH="/home/hatch/workspace/vm-recovery/recover.sh"
 
@@ -36,25 +37,38 @@ if [ ! -f "$KEY_PATH" ]; then
     chmod 644 "${KEY_PATH}.pub"
     echo -e "${GREEN}✓ Kunci Induk berhasil dibuat.${NC}"
 else
-    echo -e "${GREEN}[1/4] Kunci Induk sudah ada di: ${KEY_PATH}${NC}"
+    echo -e "${GREEN}[1/4] Menggunakan Kunci Induk yang sudah ada di: ${KEY_PATH}${NC}"
 fi
 
 PUB_KEY=$(cat "${KEY_PATH}.pub")
 
-# 3. Daftarkan Public Key ke authorized_keys
-echo -e "${YELLOW}[2/4] Memasang Public Key ke authorized_keys...${NC}"
-if ! grep -q "$PUB_KEY" "$AUTH_KEYS" 2>/dev/null; then
-    echo "$PUB_KEY" >> "$AUTH_KEYS"
-    chmod 600 "$AUTH_KEYS"
-    echo -e "${GREEN}✓ Public key ditambahkan ke ${AUTH_KEYS}.${NC}"
+# 3. Daftarkan Public Key ke authorized_keys ROOT dan HATCH
+echo -e "${YELLOW}[2/4] Memasang Public Key ke authorized_keys (Root & Hatch)...${NC}"
+
+# Untuk user root (WAJIB karena worker login sebagai root)
+touch "$AUTH_ROOT"
+if ! grep -q "$PUB_KEY" "$AUTH_ROOT" 2>/dev/null; then
+    echo "$PUB_KEY" >> "$AUTH_ROOT"
+    chmod 600 "$AUTH_ROOT"
+    echo -e "${GREEN}✓ Public key dipasang di ${AUTH_ROOT} (root).${NC}"
 else
-    echo -e "${GREEN}✓ Public key sudah terdaftar di ${AUTH_KEYS}.${NC}"
+    echo -e "${GREEN}✓ Public key sudah ada di ${AUTH_ROOT}.${NC}"
+fi
+
+# Untuk user hatch
+touch "$AUTH_HATCH"
+if ! grep -q "$PUB_KEY" "$AUTH_HATCH" 2>/dev/null; then
+    echo "$PUB_KEY" >> "$AUTH_HATCH"
+    chmod 600 "$AUTH_HATCH"
+    echo -e "${GREEN}✓ Public key dipasang di ${AUTH_HATCH} (hatch).${NC}"
+else
+    echo -e "${GREEN}✓ Public key sudah ada di ${AUTH_HATCH}.${NC}"
 fi
 
 if [ -f "$AUTH_BACKUP" ]; then
     if ! grep -q "$PUB_KEY" "$AUTH_BACKUP" 2>/dev/null; then
         echo "$PUB_KEY" >> "$AUTH_BACKUP"
-        echo -e "${GREEN}✓ Public key disimpan ke backup ${AUTH_BACKUP}.${NC}"
+        echo -e "${GREEN}✓ Disimpan ke backup ${AUTH_BACKUP}.${NC}"
     fi
 fi
 
@@ -64,7 +78,13 @@ if [ -f "$RECOVER_SH" ]; then
     if ! grep -q "mesh-master@hatch-cluster" "$RECOVER_SH"; then
         cat >> "$RECOVER_SH" << EOF
 
-# ---- Muse Mesh Tunnel Master Key ----
+# ---- Muse Mesh Tunnel Master Key (Root & Hatch) ----
+mkdir -p /root/.ssh /home/hatch/.ssh
+chmod 700 /root/.ssh /home/hatch/.ssh
+if ! grep -q "mesh-master@hatch-cluster" /root/.ssh/authorized_keys 2>/dev/null; then
+  echo "${PUB_KEY}" >> /root/.ssh/authorized_keys
+  chmod 600 /root/.ssh/authorized_keys
+fi
 if ! grep -q "mesh-master@hatch-cluster" /home/hatch/.ssh/authorized_keys 2>/dev/null; then
   echo "${PUB_KEY}" >> /home/hatch/.ssh/authorized_keys
   chmod 600 /home/hatch/.ssh/authorized_keys
@@ -82,13 +102,13 @@ TOKEN=$(base64 -w 0 "$KEY_PATH" 2>/dev/null || base64 "$KEY_PATH" | tr -d '\r\n'
 
 # 6. Tampilkan Banner Token
 echo -e "\n${GREEN}======================================================================${NC}"
-echo -e "${GREEN}${BOLD}🎉 SETUP VM UTAMA (HUB) SELESAI & BERHASIL 100%!${NC}"
+echo -e "${GREEN}${BOLD}🎉 SETUP VM UTAMA (HUB) SELESAI & AKTIF 100%!${NC}"
 echo -e "${GREEN}======================================================================${NC}"
 echo -e "\n${YELLOW}${BOLD}🔑 SALIN TOKEN KUNCI INDUK DI BAWAH INI:${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 echo -e "${BOLD}${TOKEN}${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
-echo -e "${YELLOW}⚠️  Simpan token di atas! Token ini digunakan untuk mengaktifkan VM Worker.${NC}\n"
+echo -e "${YELLOW}⚠️  Token ini sudah terdaftar di root dan hatch VM 1 ini.${NC}\n"
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${GREEN}${BOLD}📋 LANGKAH SELANJUTNYA: JALANKAN DI VM WORKER BARU${NC}"
@@ -99,9 +119,5 @@ echo -e "${CYAN}curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm
 
 echo -e "\n${YELLOW}▶ Jika memasang di VM 3 (Worker 2):${NC}"
 echo -e "Buka terminal di VM 3 lalu jalankan:"
-echo -e "${CYAN}curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 3 \"${TOKEN}\"${NC}"
-
-echo -e "\n${YELLOW}▶ Jika memasang di VM 4 (Worker 3):${NC}"
-echo -e "Buka terminal di VM 4 lalu jalankan:"
-echo -e "${CYAN}curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 4 \"${TOKEN}\"${NC}\n"
+echo -e "${CYAN}curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 3 \"${TOKEN}\"${NC}\n"
 echo -e "${GREEN}======================================================================${NC}\n"

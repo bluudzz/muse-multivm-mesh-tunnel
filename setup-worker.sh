@@ -5,9 +5,6 @@
 # ==============================================================================
 # Penggunaan:
 #   ./setup-worker.sh <WORKER_ID> "<TOKEN_KUNCI_INDUK>" [HOST_VM1]
-# Contoh:
-#   ./setup-worker.sh 2 "LS0t...=="
-#   ./setup-worker.sh 3 "LS0t...=="
 # ==============================================================================
 set -e
 
@@ -45,7 +42,8 @@ fi
 
 REMOTE_PORT=$(( 20128 + WORKER_ID ))
 SSH_USER="root"
-SSH_KEY="/home/hatch/.ssh/id_mesh_master"
+SSH_KEY_HATCH="/home/hatch/.ssh/id_mesh_master"
+SSH_KEY_ROOT="/root/.ssh/id_mesh_master"
 SERVICE_NAME="reverse-tunnel-worker${WORKER_ID}"
 HOST_ALIAS="vm1-hub-w${WORKER_ID}"
 
@@ -56,37 +54,43 @@ echo -e "Hub VM 1          : ${GREEN}${VM1_HOST}${NC}"
 echo -e "Systemd Service   : ${GREEN}${SERVICE_NAME}.service${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}\n"
 
-# 2. Pastikan folder .ssh ada
-mkdir -p /home/hatch/.ssh
-chmod 700 /home/hatch/.ssh
+# 2. Pastikan folder .ssh ada untuk hatch dan root
+mkdir -p /home/hatch/.ssh /root/.ssh
+chmod 700 /home/hatch/.ssh /root/.ssh
 
-# 3. Pasang Kunci Induk dari Token
+# 3. Pasang Kunci Induk dari Token ke hatch dan root
 echo -e "${YELLOW}[1/4] Memasang Kunci Induk dari Token...${NC}"
-echo "$TOKEN" | base64 -d > "$SSH_KEY"
-chmod 600 "$SSH_KEY"
-echo -e "${GREEN}✓ Kunci berhasil dipasang di ${SSH_KEY}.${NC}"
+echo "$TOKEN" | base64 -d > "$SSH_KEY_HATCH"
+chmod 600 "$SSH_KEY_HATCH"
+cp -p "$SSH_KEY_HATCH" "$SSH_KEY_ROOT" 2>/dev/null || true
+chmod 600 "$SSH_KEY_ROOT" 2>/dev/null || true
+echo -e "${GREEN}✓ Kunci terpasang di ${SSH_KEY_HATCH} dan ${SSH_KEY_ROOT}.${NC}"
 
-# 4. Konfigurasi SSH Client (~/.ssh/config)
+# 4. Konfigurasi SSH Client (~/.ssh/config) untuk hatch dan root
 echo -e "${YELLOW}[2/4] Mengonfigurasi Cloudflare SSH Access...${NC}"
-if ! grep -q "Host ${HOST_ALIAS}" /home/hatch/.ssh/config 2>/dev/null; then
-    cat >> /home/hatch/.ssh/config << EOF
-
+SSH_BLOCK="
 # ---- Muse Mesh Tunnel: Hub VM 1 (Worker ${WORKER_ID}) ----
 Host ${HOST_ALIAS}
     HostName ${VM1_HOST}
     User ${SSH_USER}
-    IdentityFile ${SSH_KEY}
+    IdentityFile ${SSH_KEY_HATCH}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h
-EOF
+"
+
+if ! grep -q "Host ${HOST_ALIAS}" /home/hatch/.ssh/config 2>/dev/null; then
+    echo "$SSH_BLOCK" >> /home/hatch/.ssh/config
     chmod 600 /home/hatch/.ssh/config
-    echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
-else
-    echo -e "${GREEN}✓ Alias '${HOST_ALIAS}' sudah ada di ~/.ssh/config.${NC}"
 fi
 
-# 5. Pasang dan Aktifkan systemd service
+if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
+    echo "$SSH_BLOCK" >> /root/.ssh/config
+    chmod 600 /root/.ssh/config
+fi
+echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
+
+# 5. Pasang dan Aktifkan systemd service (eksplisit dengan config dan identity file)
 echo -e "${YELLOW}[3/4] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
@@ -97,7 +101,7 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 
@@ -127,7 +131,7 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 [Install]
