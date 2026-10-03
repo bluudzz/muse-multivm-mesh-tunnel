@@ -3,8 +3,9 @@
 # SETUP-WORKER.SH — Universal Worker Installer (VM 2, VM 3, VM 4, dst)
 # Repositori: https://github.com/bluudzz/muse-multivm-mesh-tunnel
 # ==============================================================================
-# Penggunaan:
-#   ./setup-worker.sh <WORKER_ID> "<TOKEN_KUNCI_INDUK>" [HOST_VM1]
+# Skrip ini berjalan secara INTERAKTIF (menanyakan nomor worker, host SSH, dan token)
+# atau secara OTOMATIS jika argumen disertakan via CLI:
+#   ./setup-worker.sh <WORKER_ID> "<TOKEN>" [HOST_VM1]
 # ==============================================================================
 set -e
 
@@ -17,26 +18,51 @@ NC='\033[0m'
 
 WORKER_ID="${1:-}"
 TOKEN="${2:-}"
-VM1_HOST="${3:-ssh.ourme.my.id}"
+VM1_HOST="${3:-}"
 LOCAL_PORT="${4:-20129}"
 
 echo -e "\n${CYAN}======================================================================${NC}"
 echo -e "${CYAN}    🌐 MUSE MULTI-VM MESH TUNNEL: SETUP WORKER NODE                    ${NC}"
 echo -e "${CYAN}======================================================================${NC}\n"
 
-# 1. Validasi Input
+# Helper untuk membaca input dari terminal keyboard meskipun dijalankan via curl | bash
+read_input() {
+    local prompt="$1"
+    local var_name="$2"
+    local default_val="$3"
+
+    if [ -t 0 ]; then
+        read -r -p "$prompt" val
+    elif [ -e /dev/tty ]; then
+        read -r -p "$prompt" val < /dev/tty
+    else
+        val=""
+    fi
+
+    if [ -z "$val" ] && [ -n "$default_val" ]; then
+        val="$default_val"
+    fi
+    eval "$var_name=\"$val\""
+}
+
+# 1. Validasi / Tanya Jawab Interaktif
 if [ -z "$WORKER_ID" ]; then
-    echo -e "${YELLOW}Masukkan Nomor ID Worker (contoh: 2 untuk VM 2, 3 untuk VM 3):${NC}"
-    read -r WORKER_ID
+    echo -e "${YELLOW}1. Masukkan Nomor ID Worker (contoh: 2 untuk VM 2, 3 untuk VM 3):${NC}"
+    read_input "   Nomor Worker [2]: " WORKER_ID "2"
+fi
+
+if [ -z "$VM1_HOST" ]; then
+    echo -e "${YELLOW}2. Masukkan Hostname / Domain SSH VM 1 (contoh: ssh.domainanda.com):${NC}"
+    read_input "   SSH Host: " VM1_HOST ""
 fi
 
 if [ -z "$TOKEN" ]; then
-    echo -e "${YELLOW}Tempelkan Token Kunci Induk (yang didapat dari setup-hub.sh):${NC}"
-    read -r TOKEN
+    echo -e "${YELLOW}3. Masukkan Token Kunci Induk (yang didapat dari setup-hub.sh):${NC}"
+    read_input "   Token: " TOKEN ""
 fi
 
-if [ -z "$WORKER_ID" ] || [ -z "$TOKEN" ]; then
-    echo -e "${RED}Error: Nomor Worker ID dan Token Kunci Induk wajib diisi!${NC}" >&2
+if [ -z "$WORKER_ID" ] || [ -z "$VM1_HOST" ] || [ -z "$TOKEN" ]; then
+    echo -e "\n${RED}Error: Nomor Worker ID, Host SSH, dan Token Kunci Induk wajib diisi!${NC}" >&2
     exit 1
 fi
 
@@ -47,12 +73,13 @@ SSH_KEY_ROOT="/root/.ssh/id_mesh_master"
 SERVICE_NAME="reverse-tunnel-worker${WORKER_ID}"
 HOST_ALIAS="vm1-hub-w${WORKER_ID}"
 
+echo -e "\n${CYAN}---------------- Konfigurasi Terpilih ----------------${NC}"
 echo -e "Node ID           : ${GREEN}VM ${WORKER_ID}${NC}"
 echo -e "Port Internal     : ${GREEN}${LOCAL_PORT}${NC} (Muse Bridge)"
 echo -e "Port Remote VM 1  : ${YELLOW}${REMOTE_PORT}${NC} (Endpoint di 9Router)"
 echo -e "Hub VM 1          : ${GREEN}${VM1_HOST}${NC}"
 echo -e "Systemd Service   : ${GREEN}${SERVICE_NAME}.service${NC}"
-echo -e "${CYAN}----------------------------------------------------------------------${NC}\n"
+echo -e "${CYAN}------------------------------------------------------${NC}\n"
 
 # 2. Pastikan Muse Bridge terpasang dan aktif di port lokal (20129)
 if ! curl -s "http://127.0.0.1:${LOCAL_PORT}/health" >/dev/null 2>&1; then
@@ -186,7 +213,7 @@ echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF 
 echo -e "${GREEN}======================================================================${NC}"
 echo -e "\nTerowongan Reverse Tunnel aktif menghubungkan Muse Bridge worker ke VM 1:"
 echo -e "👉 ${YELLOW}http://127.0.0.1:${REMOTE_PORT}/v1${NC}"
-echo -e "🤖 Muse Bridge: ${GREEN}Aktif di port 20129${NC}"
+echo -e "🤖 Muse Bridge: ${GREEN}Aktif di port ${LOCAL_PORT}${NC}"
 echo -e "🛡️ Watchdog pemulihan: ${GREEN}Aktif tiap 1 menit via cron (* * * * *)${NC}"
 echo -e "🤖 Model di 9Router: ${YELLOW}muse/muse-spark-vm${WORKER_ID}${NC}\n"
 echo -e "${GREEN}Anda TIDAK PERLU melakukan setting apa-apa lagi di VM 1 ataupun 9Router!${NC}\n"

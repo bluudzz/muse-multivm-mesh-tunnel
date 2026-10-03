@@ -15,14 +15,14 @@ Jalankan setup-hub.sh ──► Dapat Token ──► Jalankan setup-worker.sh �
 
 ### 1️⃣ LANGKAH 1: Di VM Utama (VM 1 - Central Hub)
 
-Buka terminal di **VM 1**, lalu jalankan satu baris perintah ini:
+Buka terminal di **VM 1**, lalu jalankan perintah ini:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-hub.sh | bash
 ```
 
 **Apa yang terjadi?**
-- Skrip otomatis menyiapkan folder SSH, membuat **Kunci Induk (Master Mesh Key)**, memasang gembok ke `authorized_keys`, dan mengamankannya ke `recover.sh` (anti-VM replace).
+- Skrip otomatis menyiapkan folder SSH, membuat **Kunci Induk (Master Mesh Key)**, memasang gembok ke `authorized_keys` (root & hatch), dan mengamankannya ke `recover.sh` (anti-VM replace).
 - Di akhir eksekusi, terminal akan menampilkan **KOTAK TOKEN BESAR**:
 
 ```text
@@ -38,22 +38,23 @@ LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbG...
 
 ### 2️⃣ LANGKAH 2: Di VM Worker Baru (VM 2, VM 3, VM 4, dst.)
 
-Buka terminal di VM Worker baru mana pun, lalu jalankan perintah di bawah ini (tempelkan token dari Langkah 1):
+Buka terminal di VM Worker baru mana pun, lalu cukup jalankan perintah interaktif ini:
 
-#### ▶ Untuk VM 2 (Worker Pertama):
 ```bash
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 2 "PASTE_TOKEN_DISINI"
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash
 ```
-> 🎉 **Selesai!** VM 2 langsung terhubung ke port **`20130`** di VM 1 secara otomatis.
 
-#### ▶ Untuk VM 3 (Worker Kedua):
+**Terminal akan menanyakan 3 hal:**
+1. **Nomor Worker** (misal: `2` untuk VM 2, `3` untuk VM 3)
+2. **Hostname SSH Hub VM 1** (misal: `ssh.yourdomain.com`)
+3. **Token Kunci Induk** (yang didapat dari Langkah 1)
+
+*(Atau jalankan langsung dengan parameter tanpa tanya-jawab:)*
 ```bash
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 3 "PASTE_TOKEN_DISINI"
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s 2 "PASTE_TOKEN_DISINI" "ssh.yourdomain.com"
 ```
-> 🎉 **Selesai!** VM 3 langsung terhubung ke port **`20131`** di VM 1.
 
-#### ▶ Untuk VM 4, VM 5, dst.:
-Tinggal ganti angka `3` menjadi `4` (port `20132`), `5` (port `20133`), dst.
+> 🎉 **Selesai!** Muse Bridge otomatis diinstal & diaktifkan di port 20129, terowongan langsung tersambung ke port `20130` di VM 1, dan otomatis didaftarkan ke 9Router!
 
 ---
 
@@ -71,19 +72,14 @@ Setiap worker otomatis mendapatkan port forward mandiri di VM 1:
 
 ---
 
-## 📌 Cara Daftarkan Provider di Dashboard 9Router
+## 📌 Cara Cek Provider di Dashboard 9Router
 
 Setelah worker terhubung:
 1. Buka dashboard web 9Router di VM 1:  
-   👉 **`https://9router.ourme.my.id/ui`** (atau `http://127.0.0.1:20128/ui`)
-2. Masuk ke menu **Providers** ➔ Klik **Add Provider**.
-3. Pilih tipe: **Custom OpenAI**.
-4. Isi konfigurasi:
-   - **Provider Name**: `Muse-VM2` *(atau sesuai nama worker)*
-   - **Base URL**: `http://127.0.0.1:20130/v1` *(sesuai nomor port worker)*
-   - **API Key**: API key bridge worker (bebas/bisa dicek di `/home/hatch/muse-bridge/config.json`).
-   - **Models**: `muse/muse-spark-vm2`
-5. Klik **Save**.
+   👉 **`https://9router.yourdomain.com/ui`** (atau `http://127.0.0.1:20128/ui`)
+2. Masuk ke menu **Providers**:
+   Provider worker akan otomatis terdaftar dan berstatus **Connected**.
+3. Klik tombol **Chat** untuk langsung menguji respon AI dari worker terkait!
 
 ---
 
@@ -92,6 +88,7 @@ Setelah worker terhubung:
 Semua skrip di repositori ini mematuhi standar Hatch Runtime:
 - Semua konfigurasi disimpan di dalam `/home/hatch/`.
 - Setiap service otomatis didaftarkan ke `/home/hatch/workspace/vm-recovery/recover.sh`.
+- Dilengkapi **Watchdog Cron Tiap 1 Menit** yang otomatis memantau dan menghidupkan kembali service jika terputus.
 - Jika VM di-replace atau di-restart oleh provider, seluruh koneksi tunnel dan otorisasi SSH akan **pulih otomatis secara mandiri tanpa campur tangan manusia**.
 
 ---

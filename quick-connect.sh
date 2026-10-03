@@ -5,10 +5,6 @@
 # ==============================================================================
 # Penggunaan:
 #   ./quick-connect.sh <WORKER_ID> "<MASTER_KEY_BASE64>" [VM1_HOST]
-# Contoh untuk VM 2:
-#   ./quick-connect.sh 2 "LS0t...=="
-# Contoh untuk VM 3:
-#   ./quick-connect.sh 3 "LS0t...=="
 # ==============================================================================
 set -e
 
@@ -20,16 +16,25 @@ NC='\033[0m'
 
 WORKER_ID="${1:-2}"
 MASTER_KEY_B64="${2:-}"
-VM1_HOST="${3:-ssh.ourme.my.id}"
+VM1_HOST="${3:-}"
 LOCAL_PORT="${4:-20129}"
 
 echo -e "${CYAN}======================================================${NC}"
 echo -e "${CYAN}  MUSE MESH TUNNEL: QUICK CONNECT (ZERO-TOUCH)        ${NC}"
 echo -e "${CYAN}======================================================${NC}"
 
-if [ -z "$MASTER_KEY_B64" ]; then
-    echo -e "${RED}Error: Kunci Induk (Master Key Base64) wajib disertakan!${NC}"
-    echo -e "Format: $0 <WORKER_ID> \"<MASTER_KEY_BASE64>\""
+if [ -z "$MASTER_KEY_B64" ] || [ -z "$VM1_HOST" ]; then
+    echo -e "${YELLOW}Masukkan parameter yang diperlukan:${NC}"
+    if [ -z "$MASTER_KEY_B64" ]; then
+        read -r -p "Token Kunci Induk: " MASTER_KEY_B64
+    fi
+    if [ -z "$VM1_HOST" ]; then
+        read -r -p "Hostname SSH VM 1 (contoh: ssh.domainanda.com): " VM1_HOST
+    fi
+fi
+
+if [ -z "$MASTER_KEY_B64" ] || [ -z "$VM1_HOST" ]; then
+    echo -e "${RED}Error: Token Kunci Induk dan Hostname SSH wajib diisi!${NC}"
     exit 1
 fi
 
@@ -46,20 +51,19 @@ echo -e "Host VM 1 (Hub)   : ${GREEN}${VM1_HOST}${NC}"
 echo -e "${CYAN}------------------------------------------------------${NC}\n"
 
 # 1. Pastikan folder .ssh ada
-mkdir -p /home/hatch/.ssh
-chmod 700 /home/hatch/.ssh
+mkdir -p /home/hatch/.ssh /root/.ssh
+chmod 700 /home/hatch/.ssh /root/.ssh
 
 # 2. Pasang Kunci Induk
 echo -e "${YELLOW}[1/4] Menginstal Kunci Induk (Master Mesh Key)...${NC}"
 echo "$MASTER_KEY_B64" | base64 -d > "$SSH_KEY"
 chmod 600 "$SSH_KEY"
+cp -p "$SSH_KEY" /root/.ssh/id_mesh_master 2>/dev/null || true
 echo -e "${GREEN}✓ Kunci Induk berhasil dipasang di $SSH_KEY.${NC}"
 
 # 3. Konfigurasi ~/.ssh/config dengan Cloudflared
 echo -e "${YELLOW}[2/4] Mengonfigurasi Cloudflare SSH Access...${NC}"
-if ! grep -q "Host ${HOST_ALIAS}" /home/hatch/.ssh/config 2>/dev/null; then
-    cat >> /home/hatch/.ssh/config << EOF
-
+SSH_CFG="
 # ---- Muse Mesh Tunnel: Hub VM 1 (Worker ${WORKER_ID}) ----
 Host ${HOST_ALIAS}
     HostName ${VM1_HOST}
@@ -68,12 +72,17 @@ Host ${HOST_ALIAS}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h
-EOF
+"
+
+if ! grep -q "Host ${HOST_ALIAS}" /home/hatch/.ssh/config 2>/dev/null; then
+    echo "$SSH_CFG" >> /home/hatch/.ssh/config
     chmod 600 /home/hatch/.ssh/config
-    echo -e "${GREEN}✓ Alias SSH '${HOST_ALIAS}' berhasil dikonfigurasi.${NC}"
-else
-    echo -e "${GREEN}✓ Alias '${HOST_ALIAS}' sudah ada di ~/.ssh/config.${NC}"
 fi
+if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
+    echo "$SSH_CFG" >> /root/.ssh/config
+    chmod 600 /root/.ssh/config
+fi
+echo -e "${GREEN}✓ Alias SSH '${HOST_ALIAS}' berhasil dikonfigurasi.${NC}"
 
 # 4. Pasang systemd service reverse tunnel
 echo -e "${YELLOW}[3/4] Mengaktifkan service systemd ${SERVICE_NAME}.service...${NC}"
@@ -86,7 +95,7 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 
@@ -116,7 +125,7 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 [Install]

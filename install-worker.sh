@@ -19,7 +19,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 WORKER_ID="${1:-2}"
-VM1_HOST="${2:-ssh.ourme.my.id}"
+VM1_HOST="${2:-ssh.yourdomain.com}"
 LOCAL_PORT="${3:-20129}"
 
 # Hitung port remote: VM 2 -> 20130, VM 3 -> 20131, dst.
