@@ -1,0 +1,18 @@
+[Unit]
+Description=Muse mailbox bridge (9Router -> Muse worker)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/muse-bridge
+Environment=HOME=/home/hatch
+Environment=CURL_CA_BUNDLE=/run/hatch/egress-tls/ca-bundle.pem
+Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
+Environment=NODE_EXTRA_CA_CERTS=/run/hatch/egress-tls/ca-bundle.pem
+ExecStart=/usr/bin/node /home/hatch/muse-bridge/bridge.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

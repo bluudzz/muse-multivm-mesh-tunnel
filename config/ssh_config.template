@@ -1,0 +1,14 @@
+# ==============================================================================
+# SSH Client Config Template untuk VM 2 (Menembus Cloudflare Access SSH)
+# Simpan atau append ke: /home/hatch/.ssh/config (chmod 600)
+# ==============================================================================
+
+Host vm1-hub
+    HostName ssh.ourme.my.id
+    User root
+    IdentityFile /home/hatch/.ssh/id_vm2
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+    ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h

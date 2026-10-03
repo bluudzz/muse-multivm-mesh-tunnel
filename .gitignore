@@ -1,0 +1,14 @@
+# Private keys and identities
+*.key
+id_*
+!id_*.pub
+*.pem
+
+# Logs
+*.log
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

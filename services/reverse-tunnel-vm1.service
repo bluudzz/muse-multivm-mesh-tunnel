@@ -1,0 +1,14 @@
+[Unit]
+Description=SSH Reverse Tunnel ke 9Router VM 1
+After=network.target muse-bridge.service
+Wants=muse-bridge.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/ssh -N -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 20130:127.0.0.1:20129 vm1-hub
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

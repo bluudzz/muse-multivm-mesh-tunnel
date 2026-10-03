@@ -1,0 +1,14 @@
+{
+  "name": "Muse VM 2",
+  "provider": "custom-openai",
+  "baseUrl": "http://127.0.0.1:20130/v1",
+  "apiKey": "PASTE_MUSE_BRIDGE_KEY_FROM_VM2_CONFIG_JSON",
+  "models": [
+    {
+      "id": "muse/muse-spark-vm2",
+      "name": "Muse Spark 1.3 (VM 2)",
+      "contextWindow": 1048576,
+      "maxOutput": 131072
+    }
+  ]
+}
