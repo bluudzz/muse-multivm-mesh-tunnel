@@ -16,10 +16,41 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-WORKER_ID="${1:-}"
-TOKEN="${2:-}"
-VM1_HOST="${3:-}"
-LOCAL_PORT="${4:-20129}"
+WORKER_ID=""
+TOKEN=""
+VM1_HOST=""
+LOCAL_PORT="20129"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --worker|--id|-w)
+            WORKER_ID="$2"
+            shift 2
+            ;;
+        --host|--ssh|-h)
+            VM1_HOST="$2"
+            shift 2
+            ;;
+        --token|-t)
+            TOKEN="$2"
+            shift 2
+            ;;
+        --port|-p)
+            LOCAL_PORT="$2"
+            shift 2
+            ;;
+        *)
+            if [ -z "$WORKER_ID" ]; then
+                WORKER_ID="$1"
+            elif [ -z "$TOKEN" ]; then
+                TOKEN="$1"
+            elif [ -z "$VM1_HOST" ]; then
+                VM1_HOST="$1"
+            fi
+            shift
+            ;;
+    esac
+done
 
 echo -e "\n${CYAN}======================================================================${NC}"
 echo -e "${CYAN}    🌐 MUSE MULTI-VM MESH TUNNEL: SETUP WORKER NODE                    ${NC}"

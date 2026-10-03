@@ -39,5 +39,40 @@ curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/mai
 
 ---
 
+## 🤖 Alternatif: Menjalankan Lewat AI Agen di Masing-Masing VM
+
+Jika VM Anda dikendalikan oleh AI Agent (seperti Muse, Hermes, atau asisten AI lokal), Anda tidak perlu mengetik perintah terminal secara manual. Cukup salin prompt berikut ke chat AI di masing-masing VM:
+
+### 💬 Prompt untuk AI di Server Utama (VM 1 - Hub)
+Salin & kirim ke AI di VM 1:
+```text
+Tolong siapkan server ini sebagai Hub Pusat (VM 1) untuk Muse Multi-VM Mesh Tunnel:
+1. Pastikan port 20128 (9Router) dan OpenSSH server aktif.
+2. Jalankan skrip setup resmi:
+   curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-hub.sh | bash
+3. Setelah selesai, tampilkan teks MASTER TOKEN KUNCI INDUK yang dihasilkan dengan jelas agar bisa saya salin untuk VM worker berikutnya.
+```
+
+---
+
+### 💬 Prompt untuk AI di VM Worker Baru (VM 2, VM 3, dst.)
+Salin & kirim ke AI di VM Worker (AI akan bertanya terlebih dahulu sebelum bertindak):
+```text
+Tolong hubungkan VM ini sebagai Worker Node ke Hub Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+
+⚠️ ATURAN WAJIB SEBELUM EKSEKUSI:
+DILARANG menjalankan perintah apapun sebelum Anda menanyakan dan saya memberikan 3 data berikut:
+1. Nomor Worker ID (contoh: 2, 3, 4, dst.)
+2. Hostname / Domain SSH Hub VM 1 (contoh: ssh.domainanda.com atau IP publik)
+3. Token Kunci Induk (Master Key Base64 dari setup VM 1)
+
+Setelah saya menjawab dan memberikan ketiga data tersebut, jalankan perintah instalasi berikut:
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker <NOMOR_WORKER> --host <SSH_HOST> --token "<MASTER_TOKEN>"
+
+Kemudian periksa dan pastikan service muse-bridge dan reverse-tunnel berjalan normal.
+```
+
+---
+
 ## 📄 Lisensi
 MIT License © 2026 bluudzz
