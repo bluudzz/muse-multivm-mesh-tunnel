@@ -4,31 +4,47 @@ Sistem otomatisasi untuk menghubungkan beberapa instans **VM Muse Spark (Hatch R
 
 ---
 
-## ⚡ TUTORIAL PENGINSTALAN CEPAT (3 LANGKAH)
+## ⚡ CARA TERCEPAT: 1-KLIK ZERO-TOUCH (TANPA PERLU BUKA VM 1)
 
-### 1️⃣ Di VM 2 (Worker Muse Baru)
-Cukup jalankan satu perintah ini di terminal VM 2:
+Jika VM 1 sudah dipasangi Kunci Induk (*Master Mesh Key*), maka untuk setiap VM baru Anda **hanya perlu menjalankan 1 baris perintah saja**. Tidak perlu salin kunci, tidak perlu buka VM 1, dan tidak perlu chat ke Muse!
+
+### 1️⃣ Untuk VM 2 (Worker Pertama)
+Buka terminal VM 2 dan jalankan 1 perintah ini:
 ```bash
-git clone https://github.com/bluudzz/muse-multivm-mesh-tunnel.git /home/hatch/muse-multivm-mesh-tunnel && cd /home/hatch/muse-multivm-mesh-tunnel && chmod +x *.sh && ./install-vm2.sh
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/quick-connect.sh | bash -s 2 "PASTE_TOKEN_MASTER_KEY_DISINI"
 ```
-> **Output:** Skrip akan otomatis mengonfigurasi SSH, membuat tunnel service, mengamankan ke `recover.sh`, dan mencetak **Public Key VM 2**. Salin teks public key tersebut.
+> 🎉 **Selesai!** VM 2 langsung otomatis terhubung ke port `20130` di VM 1 seketika.
 
 ---
 
-### 2️⃣ Di VM 1 (Central Hub 9Router)
-Buka terminal VM 1 (atau kirimkan prompt ke Muse AI di VM 1):
+### 2️⃣ Untuk VM 3 (Worker Kedua)
+Buka terminal VM 3 dan jalankan:
 ```bash
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/register-vm1.sh | bash -s "PASTE_PUBLIC_KEY_DARI_VM2_DISINI"
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/quick-connect.sh | bash -s 3 "PASTE_TOKEN_MASTER_KEY_DISINI"
 ```
-> **Hasil:** Port internal `20129` di VM 2 sekarang langsung muncul sebagai port lokal `20130` di VM 1!
+> 🎉 **Selesai!** VM 3 langsung otomatis terhubung ke port `20131` di VM 1.
 
 ---
 
-### 3️⃣ Daftarkan ke 9Router di VM 1
-Di UI 9Router (`https://9router.ourme.my.id/ui`):
-- **Provider**: Custom OpenAI
-- **Base URL**: `http://127.0.0.1:20130/v1`
-- **Model**: `muse/muse-spark-vm2`
+### 3️⃣ Untuk VM 4, VM 5, dst.
+Tinggal ganti angka `3` di atas menjadi `4` (port 20132), `5` (port 20133), dst.
+
+---
+
+## 🛠️ CARA ALTERNATIF (Manual 2-Langkah)
+
+Jika Anda ingin membuat kunci SSH terpisah per VM secara manual:
+
+### Langkah A (Di Worker Baru)
+```bash
+git clone https://github.com/bluudzz/muse-multivm-mesh-tunnel.git /home/hatch/tunnel && /home/hatch/tunnel/install-worker.sh 2
+```
+Salin public key yang muncul di layar.
+
+### Langkah B (Di VM 1 / Chat Muse)
+```bash
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/register-vm1.sh | bash -s "PASTE_PUBLIC_KEY" 20130 "VM2"
+```
 
 ---
 
