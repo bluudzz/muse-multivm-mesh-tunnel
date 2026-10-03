@@ -32,6 +32,33 @@ Di UI 9Router (`https://9router.ourme.my.id/ui`):
 
 ---
 
+## 🔀 Skalabilitas Multi-Worker (VM 3, VM 4, VM 5, dst.)
+
+Sistem ini didesain **skalabel secara horizontal**. Anda bisa menghubungkan puluhan VM Muse Spark ke satu 9Router di VM 1 tanpa bentrok:
+
+| Worker | Perintah Installer di Worker | Port di VM 1 | Model di 9Router |
+|---|---|---|---|
+| **VM 2** | `./install-worker.sh 2` | `20130` | `muse/muse-spark-vm2` |
+| **VM 3** | `./install-worker.sh 3` | `20131` | `muse/muse-spark-vm3` |
+| **VM 4** | `./install-worker.sh 4` | `20132` | `muse/muse-spark-vm4` |
+| **VM 5** | `./install-worker.sh 5` | `20133` | `muse/muse-spark-vm5` |
+
+### Cara Pasang di VM 3 (Contoh):
+1. **Di terminal VM 3**, jalankan:
+   ```bash
+   git clone https://github.com/bluudzz/muse-multivm-mesh-tunnel.git /home/hatch/muse-multivm-mesh-tunnel && cd /home/hatch/muse-multivm-mesh-tunnel && chmod +x *.sh && ./install-worker.sh 3
+   ```
+2. **Di VM 1 (atau kirim ke AI Muse VM 1)**:
+   ```bash
+   curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/register-vm1.sh | bash -s "PASTE_PUBKEY_VM3" 20131 "VM3"
+   ```
+3. **Daftarkan provider baru ke 9Router**:
+   - Provider Name: `Muse-VM3`
+   - Base URL: `http://127.0.0.1:20131/v1`
+   - Model: `muse/muse-spark-vm3`
+
+---
+
 ## 📌 Arsitektur Sistem
 
 ```
