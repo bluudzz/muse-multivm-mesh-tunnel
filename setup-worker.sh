@@ -54,11 +54,24 @@ echo -e "Hub VM 1          : ${GREEN}${VM1_HOST}${NC}"
 echo -e "Systemd Service   : ${GREEN}${SERVICE_NAME}.service${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}\n"
 
-# 2. Pastikan folder .ssh ada untuk hatch dan root
+# 2. Pastikan Muse Bridge terpasang dan aktif di port lokal (20129)
+if ! curl -s "http://127.0.0.1:${LOCAL_PORT}/health" >/dev/null 2>&1; then
+    echo -e "${YELLOW}[0/5] Muse Bridge belum aktif di port ${LOCAL_PORT}. Memasang Muse Bridge otomatis...${NC}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+    if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/install-muse-bridge.sh" ]; then
+        bash "${SCRIPT_DIR}/install-muse-bridge.sh"
+    else
+        curl -sSL "https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/install-muse-bridge.sh" | bash
+    fi
+else
+    echo -e "${GREEN}[0/5] Muse Bridge sudah aktif di port ${LOCAL_PORT}.${NC}"
+fi
+
+# 3. Pastikan folder .ssh ada untuk hatch dan root
 mkdir -p /home/hatch/.ssh /root/.ssh
 chmod 700 /home/hatch/.ssh /root/.ssh
 
-# 3. Pasang Kunci Induk dari Token ke hatch dan root
+# 4. Pasang Kunci Induk dari Token ke hatch dan root
 echo -e "${YELLOW}[1/5] Memasang Kunci Induk dari Token...${NC}"
 echo "$TOKEN" | base64 -d > "$SSH_KEY_HATCH"
 chmod 600 "$SSH_KEY_HATCH"
@@ -66,7 +79,7 @@ cp -p "$SSH_KEY_HATCH" "$SSH_KEY_ROOT" 2>/dev/null || true
 chmod 600 "$SSH_KEY_ROOT" 2>/dev/null || true
 echo -e "${GREEN}✓ Kunci terpasang di ${SSH_KEY_HATCH} dan ${SSH_KEY_ROOT}.${NC}"
 
-# 4. Konfigurasi SSH Client (~/.ssh/config) untuk hatch dan root
+# 5. Konfigurasi SSH Client (~/.ssh/config) untuk hatch dan root
 echo -e "${YELLOW}[2/5] Mengonfigurasi Cloudflare SSH Access...${NC}"
 SSH_BLOCK="
 # ---- Muse Mesh Tunnel: Hub VM 1 (Worker ${WORKER_ID}) ----
@@ -90,7 +103,7 @@ if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
 fi
 echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
 
-# 5. Pasang dan Aktifkan systemd service
+# 6. Pasang dan Aktifkan systemd service
 echo -e "${YELLOW}[3/5] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
@@ -114,7 +127,7 @@ systemctl enable "${SERVICE_NAME}.service"
 systemctl restart "${SERVICE_NAME}.service"
 echo -e "${GREEN}✓ Service ${SERVICE_NAME}.service aktif & berjalan!${NC}"
 
-# 6. Pasang ke recover.sh (Anti-VM Replace)
+# 7. Pasang ke recover.sh (Anti-VM Replace)
 RECOVER_DIR="/home/hatch/workspace/vm-recovery"
 mkdir -p "$RECOVER_DIR"
 RECOVER_SH="${RECOVER_DIR}/recover.sh"
@@ -157,13 +170,13 @@ else
     echo -e "${GREEN}✓ Sudah terdaftar di recover.sh.${NC}"
 fi
 
-# 7. Pasang Watchdog Cron Tiap 1 Menit
+# 8. Pasang Watchdog Cron Tiap 1 Menit
 echo -e "${YELLOW}[5/5] Memasang Watchdog Cron Tiap 1 Menit...${NC}"
 CRON_CMD="* * * * * /bin/bash /home/hatch/workspace/vm-recovery/recover.sh >/dev/null 2>&1"
 (crontab -l 2>/dev/null | grep -Fv "recover.sh"; echo "$CRON_CMD") | crontab -
 echo -e "${GREEN}✓ Cron watchdog tiap 1 menit berhasil aktif!${NC}"
 
-# 8. Otomasi Registrasi ke 9Router di VM 1 via SSH
+# 9. Otomasi Registrasi ke 9Router di VM 1 via SSH
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 echo -e "${YELLOW}⚡ [Otomasi 9Router] Mendaftarkan VM ${WORKER_ID} langsung ke 9Router di VM 1...${NC}"
 ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT}" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
@@ -173,6 +186,7 @@ echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF 
 echo -e "${GREEN}======================================================================${NC}"
 echo -e "\nTerowongan Reverse Tunnel aktif menghubungkan Muse Bridge worker ke VM 1:"
 echo -e "👉 ${YELLOW}http://127.0.0.1:${REMOTE_PORT}/v1${NC}"
+echo -e "🤖 Muse Bridge: ${GREEN}Aktif di port 20129${NC}"
 echo -e "🛡️ Watchdog pemulihan: ${GREEN}Aktif tiap 1 menit via cron (* * * * *)${NC}"
 echo -e "🤖 Model di 9Router: ${YELLOW}muse/muse-spark-vm${WORKER_ID}${NC}\n"
 echo -e "${GREEN}Anda TIDAK PERLU melakukan setting apa-apa lagi di VM 1 ataupun 9Router!${NC}\n"
