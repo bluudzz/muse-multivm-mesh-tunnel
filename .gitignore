@@ -3,6 +3,7 @@
 id_*
 !id_*.pub
 *.pem
+.mesh_token
 
 # Logs
 *.log

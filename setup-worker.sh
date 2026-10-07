@@ -98,6 +98,7 @@ if [ -z "$WORKER_ID" ] || [ -z "$VM1_HOST" ] || [ -z "$TOKEN" ]; then
 fi
 
 REMOTE_PORT=$(( 20128 + WORKER_ID ))
+SSH_CONTROL_PORT=$(( 22000 + WORKER_ID ))
 SSH_USER="root"
 SSH_KEY_HATCH="/home/hatch/.ssh/id_mesh_master"
 SSH_KEY_ROOT="/root/.ssh/id_mesh_master"
@@ -108,6 +109,7 @@ echo -e "\n${CYAN}---------------- Konfigurasi Terpilih ----------------${NC}"
 echo -e "Node ID           : ${GREEN}VM ${WORKER_ID}${NC}"
 echo -e "Port Internal     : ${GREEN}${LOCAL_PORT}${NC} (Muse Bridge)"
 echo -e "Port Remote VM 1  : ${YELLOW}${REMOTE_PORT}${NC} (Endpoint di 9Router)"
+echo -e "SSH Control Port  : ${YELLOW}${SSH_CONTROL_PORT}${NC} (Kendali Remote dari VM 1)"
 echo -e "Hub VM 1          : ${GREEN}${VM1_HOST}${NC}"
 echo -e "Systemd Service   : ${GREEN}${SERVICE_NAME}.service${NC}"
 echo -e "${CYAN}------------------------------------------------------${NC}\n"
@@ -129,13 +131,27 @@ fi
 mkdir -p /home/hatch/.ssh /root/.ssh
 chmod 700 /home/hatch/.ssh /root/.ssh
 
-# 4. Pasang Kunci Induk dari Token ke hatch dan root
-echo -e "${YELLOW}[1/5] Memasang Kunci Induk dari Token...${NC}"
+# 4. Pasang Kunci Induk dari Token ke hatch dan root + Daftarkan ke authorized_keys
+echo -e "${YELLOW}[1/5] Memasang Kunci Induk & Akses Kendali dari VM 1...${NC}"
 echo "$TOKEN" | base64 -d > "$SSH_KEY_HATCH"
 chmod 600 "$SSH_KEY_HATCH"
 cp -p "$SSH_KEY_HATCH" "$SSH_KEY_ROOT" 2>/dev/null || true
 chmod 600 "$SSH_KEY_ROOT" 2>/dev/null || true
-echo -e "${GREEN}✓ Kunci terpasang di ${SSH_KEY_HATCH} dan ${SSH_KEY_ROOT}.${NC}"
+
+# Ekstrak Public Key agar VM 1 diizinkan login SSH langsung ke worker ini
+ssh-keygen -y -f "$SSH_KEY_HATCH" > "${SSH_KEY_HATCH}.pub" 2>/dev/null || true
+PUB_KEY=$(cat "${SSH_KEY_HATCH}.pub" 2>/dev/null || echo "")
+if [ -n "$PUB_KEY" ]; then
+    touch /root/.ssh/authorized_keys /home/hatch/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys /home/hatch/.ssh/authorized_keys
+    if ! grep -q "$PUB_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
+        echo "$PUB_KEY" >> /root/.ssh/authorized_keys
+    fi
+    if ! grep -q "$PUB_KEY" /home/hatch/.ssh/authorized_keys 2>/dev/null; then
+        echo "$PUB_KEY" >> /home/hatch/.ssh/authorized_keys
+    fi
+fi
+echo -e "${GREEN}✓ Kunci terpasang & akses kendali dari VM 1 diaktifkan.${NC}"
 
 # 5. Konfigurasi SSH Client (~/.ssh/config) untuk hatch dan root
 echo -e "${YELLOW}[2/5] Mengonfigurasi Cloudflare SSH Access...${NC}"
@@ -161,18 +177,18 @@ if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
 fi
 echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
 
-# 6. Pasang dan Aktifkan systemd service
+# 6. Pasang dan Aktifkan systemd service (Dual Tunnel: Port Model + Port SSH Kendali)
 echo -e "${YELLOW}[3/5] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke 9Router VM 1 (Port ${REMOTE_PORT})
+Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, SSH: ${SSH_CONTROL_PORT})
 After=network.target muse-bridge.service
 Wants=muse-bridge.service
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 
@@ -199,16 +215,24 @@ if ! grep -q "${SERVICE_NAME}" "$RECOVER_SH"; then
     cat >> "$RECOVER_SH" << EOF
 
 # ---- Muse Multi-VM Reverse Tunnel Worker ${WORKER_ID} ----
+mkdir -p /root/.ssh /home/hatch/.ssh
+chmod 700 /root/.ssh /home/hatch/.ssh
+if [ -f /home/hatch/.ssh/id_mesh_master.pub ]; then
+  PUB=\$(cat /home/hatch/.ssh/id_mesh_master.pub)
+  grep -q "\$PUB" /root/.ssh/authorized_keys 2>/dev/null || echo "\$PUB" >> /root/.ssh/authorized_keys
+  grep -q "\$PUB" /home/hatch/.ssh/authorized_keys 2>/dev/null || echo "\$PUB" >> /home/hatch/.ssh/authorized_keys
+fi
+
 if [ ! -f /etc/systemd/system/${SERVICE_NAME}.service ]; then
   cat > /etc/systemd/system/${SERVICE_NAME}.service << 'UNIT'
 [Unit]
-Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke 9Router VM 1 (Port ${REMOTE_PORT})
+Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, SSH: ${SSH_CONTROL_PORT})
 After=network.target muse-bridge.service
 Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 [Install]
@@ -240,11 +264,12 @@ echo -e "${YELLOW}⚡ [Otomasi 9Router] Mendaftarkan VM ${WORKER_ID} langsung ke
 ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT}" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
 
 echo -e "\n${GREEN}======================================================================${NC}"
-echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF & TERDAFTAR!${NC}"
+echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF & TERKONEKSI!${NC}"
 echo -e "${GREEN}======================================================================${NC}"
-echo -e "\nTerowongan Reverse Tunnel aktif menghubungkan Muse Bridge worker ke VM 1:"
-echo -e "👉 ${YELLOW}http://127.0.0.1:${REMOTE_PORT}/v1${NC}"
-echo -e "🤖 Muse Bridge: ${GREEN}Aktif di port ${LOCAL_PORT}${NC}"
-echo -e "🛡️ Watchdog pemulihan: ${GREEN}Aktif tiap 1 menit via cron (* * * * *)${NC}"
-echo -e "🤖 Model di 9Router: ${YELLOW}muse/muse-spark-vm${WORKER_ID}${NC}\n"
-echo -e "${GREEN}Anda TIDAK PERLU melakukan setting apa-apa lagi di VM 1 ataupun 9Router!${NC}\n"
+echo -e "\nTerowongan 2 Arah (Mesh Tunnel) aktif menghubungkan Worker ke VM 1:"
+echo -e "🤖 Model AI di VM 1      : ${YELLOW}http://127.0.0.1:${REMOTE_PORT}/v1${NC} (Port ${REMOTE_PORT})"
+echo -e "💻 Akses Kendali SSH VM 1 : ${YELLOW}Port ${SSH_CONTROL_PORT}${NC} (Dari VM 1: ${CYAN}mesh ssh ${WORKER_ID}${NC})"
+echo -e "🤖 Muse Bridge lokal     : ${GREEN}Aktif di port ${LOCAL_PORT}${NC}"
+echo -e "🛡️ Watchdog pemulihan     : ${GREEN}Aktif tiap 1 menit via cron (* * * * *)${NC}"
+echo -e "🤖 Model di 9Router       : ${YELLOW}muse/muse-spark-vm${WORKER_ID}${NC}\n"
+echo -e "${GREEN}Dari VM 1, Anda sekarang bisa menjalankan: ${BOLD}mesh ssh ${WORKER_ID}${NC} ${GREEN}atau ${BOLD}mesh exec ${WORKER_ID} \"uptime\"${NC}\n"

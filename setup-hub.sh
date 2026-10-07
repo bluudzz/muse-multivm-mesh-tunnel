@@ -73,12 +73,13 @@ if [ -f "$AUTH_BACKUP" ]; then
 fi
 
 # 4. Amankan ke recover.sh (Anti VM Replace)
-echo -e "${YELLOW}[3/4] Mendaftarkan ke recover.sh (Anti-VM Replace)...${NC}"
+echo -e "${YELLOW}[3/5] Mendaftarkan ke recover.sh (Anti-VM Replace)...${NC}"
+mkdir -p /home/hatch/scripts /home/hatch/workspace/vm-recovery
 if [ -f "$RECOVER_SH" ]; then
     if ! grep -q "mesh-master@hatch-cluster" "$RECOVER_SH"; then
         cat >> "$RECOVER_SH" << EOF
 
-# ---- Muse Mesh Tunnel Master Key (Root & Hatch) ----
+# ---- Muse Mesh Tunnel Master Key & Mesh CLI ----
 mkdir -p /root/.ssh /home/hatch/.ssh
 chmod 700 /root/.ssh /home/hatch/.ssh
 if ! grep -q "mesh-master@hatch-cluster" /root/.ssh/authorized_keys 2>/dev/null; then
@@ -89,6 +90,12 @@ if ! grep -q "mesh-master@hatch-cluster" /home/hatch/.ssh/authorized_keys 2>/dev
   echo "${PUB_KEY}" >> /home/hatch/.ssh/authorized_keys
   chmod 600 /home/hatch/.ssh/authorized_keys
 fi
+
+# Restore mesh CLI binary jika VM direplace
+if [ -f /home/hatch/scripts/mesh-ctl.sh ] && [ ! -f /usr/local/bin/mesh ]; then
+  cp /home/hatch/scripts/mesh-ctl.sh /usr/local/bin/mesh
+  chmod +x /usr/local/bin/mesh
+fi
 EOF
         echo -e "${GREEN}✓ Berhasil diamankan di recover.sh.${NC}"
     else
@@ -96,19 +103,66 @@ EOF
     fi
 fi
 
-# 5. Buat Token Base64 dari Private Key
-echo -e "${YELLOW}[4/4] Menghasilkan Token Kunci Induk untuk Worker...${NC}"
+# 5. Pasang CLI Orchestrator 'mesh' untuk Mengendalikan Worker
+echo -e "${YELLOW}[4/5] Memasang Tool Kendali Pusat 'mesh' di VM 1...${NC}"
+mkdir -p /home/hatch/scripts /usr/local/bin
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/scripts/mesh-ctl.sh" ]; then
+    cp "${SCRIPT_DIR}/scripts/mesh-ctl.sh" /home/hatch/scripts/mesh-ctl.sh
+    cp "${SCRIPT_DIR}/scripts/mesh-ctl.sh" /usr/local/bin/mesh
+else
+    curl -sSL "https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/scripts/mesh-ctl.sh" -o /home/hatch/scripts/mesh-ctl.sh || true
+    if [ -f /home/hatch/scripts/mesh-ctl.sh ]; then
+        cp /home/hatch/scripts/mesh-ctl.sh /usr/local/bin/mesh
+    fi
+fi
+chmod +x /home/hatch/scripts/mesh-ctl.sh /usr/local/bin/mesh 2>/dev/null || true
+
+# Tambahkan alias SSH client config untuk kemudahan (ssh vm2, ssh vm3, dst.)
+SSH_CONF_BLOCK="
+# ---- Muse Mesh Worker Control Aliases ----
+Match host vm[0-9]*
+    HostName 127.0.0.1
+    User root
+    IdentityFile ${KEY_PATH}
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+"
+touch /home/hatch/.ssh/config /root/.ssh/config
+if ! grep -q "Match host vm" /home/hatch/.ssh/config 2>/dev/null; then
+    echo "$SSH_CONF_BLOCK" >> /home/hatch/.ssh/config
+    chmod 600 /home/hatch/.ssh/config
+fi
+if ! grep -q "Match host vm" /root/.ssh/config 2>/dev/null; then
+    echo "$SSH_CONF_BLOCK" >> /root/.ssh/config
+    chmod 600 /root/.ssh/config
+fi
+echo -e "${GREEN}✓ Tool kendali 'mesh' berhasil dipasang di /usr/local/bin/mesh.${NC}"
+
+# 6. Buat Token Base64 dari Private Key
+echo -e "${YELLOW}[5/5] Menghasilkan Token Kunci Induk untuk Worker...${NC}"
 TOKEN=$(base64 -w 0 "$KEY_PATH" 2>/dev/null || base64 "$KEY_PATH" | tr -d '\r\n')
 
-# 6. Tampilkan Banner Token
+# 7. Tampilkan Banner Token & Panduan Kontrol
 echo -e "\n${GREEN}======================================================================${NC}"
-echo -e "${GREEN}${BOLD}🎉 SETUP VM UTAMA (HUB) SELESAI & AKTIF 100%!${NC}"
+echo -e "${GREEN}${BOLD}🎉 SETUP VM UTAMA (HUB PUSAT KENDALI) SELESAI & AKTIF 100%!${NC}"
 echo -e "${GREEN}======================================================================${NC}"
 echo -e "\n${YELLOW}${BOLD}🔑 SALIN TOKEN KUNCI INDUK DI BAWAH INI:${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 echo -e "${BOLD}${TOKEN}${NC}"
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 echo -e "${YELLOW}⚠️  Token ini sudah terdaftar di root dan hatch VM 1 ini.${NC}\n"
+
+echo -e "${CYAN}======================================================================${NC}"
+echo -e "${GREEN}${BOLD}🎮 PANDUAN MENGAKSES & MENGENDALIKAN WORKER DARI VM 1:${NC}"
+echo -e "${CYAN}======================================================================${NC}"
+echo -e "Tool ${BOLD}mesh${NC} siap digunakan langsung dari terminal VM 1:"
+echo -e "  - ${GREEN}mesh list${NC}                     : Cek status semua worker (SSH & Model AI)"
+echo -e "  - ${GREEN}mesh ssh 2${NC}                    : Masuk ke terminal shell VM 2 langsung!"
+echo -e "  - ${GREEN}mesh exec 2 \"uptime\"${NC}         : Jalankan perintah di VM 2 dari VM 1"
+echo -e "  - ${GREEN}mesh exec all \"df -h\"${NC}        : Jalankan perintah ke SEMUA worker serentak"
+echo -e "  - ${GREEN}mesh push 2 <lokal> <remote>${NC}  : Kirim file dari VM 1 ke VM 2"
+echo -e "  - ${GREEN}mesh restart 2 muse-bridge${NC}   : Restart service di worker dari jauh\n"
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${GREEN}${BOLD}📋 LANGKAH SELANJUTNYA: JALANKAN DI VM WORKER BARU${NC}"
