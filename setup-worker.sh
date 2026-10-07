@@ -449,7 +449,15 @@ echo -e "${YELLOW}⚡ [Otomasi 9Router] Mendaftarkan VM ${WORKER_ID} langsung ke
 if [ -f /home/hatch/server-control/proxy.env ]; then
     set -a; . /home/hatch/server-control/proxy.env; set +a
 fi
-ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT}" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
+
+WORKER_BRIDGE_KEY=""
+if [ -f /home/hatch/muse-bridge/.bridge_key ]; then
+    WORKER_BRIDGE_KEY=$(cat /home/hatch/muse-bridge/.bridge_key 2>/dev/null | tr -d '\r\n')
+elif [ -f /home/hatch/muse-bridge/config.json ]; then
+    WORKER_BRIDGE_KEY=$(grep -o '"bridge_key": "[^"]*"' /home/hatch/muse-bridge/config.json 2>/dev/null | head -1 | cut -d'"' -f4)
+fi
+
+ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT} '${WORKER_BRIDGE_KEY}'" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1 dengan bridge key asli!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
 
 echo -e "\n${GREEN}======================================================================${NC}"
 echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF & TERKONEKSI!${NC}"

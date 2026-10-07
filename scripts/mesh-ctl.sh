@@ -406,6 +406,56 @@ cmd_restart() {
     cmd_exec "$target" "systemctl restart ${service} && systemctl status ${service} --no-pager -n 5"
 }
 
+cmd_sync_keys() {
+    local target="${1:-all}"
+    echo -e "\n${CYAN}======================================================================${NC}"
+    echo -e "${CYAN}${BOLD}       🔑 MUSE MESH: SINKRONISASI KUNCI BRIDGE KE 9ROUTER             ${NC}"
+    echo -e "${CYAN}======================================================================${NC}\n"
+
+    local targets=""
+    if [ "$target" = "all" ]; then
+        targets=$(find_active_workers)
+        if [ -z "$targets" ]; then
+            echo -e "${YELLOW}Tidak ada worker node yang sedang aktif.${NC}"
+            return 0
+        fi
+    else
+        targets="$target"
+    fi
+
+    for id in $targets; do
+        local cp=$(get_ssh_port "$id")
+        local mp=$(get_model_port "$id")
+        echo -e "${YELLOW}Mengecek Bridge Key untuk VM ${id}...${NC}"
+
+        local key=""
+        if is_agent_open "$cp"; then
+            local auth_header=""
+            [ -n "$TOKEN" ] && auth_header="Authorization: Bearer ${TOKEN}"
+            local resp
+            resp=$(curl -s -m 10 --noproxy '*' ${auth_header:+-H "$auth_header"} "http://127.0.0.1:${cp}/file/read?path=/home/hatch/muse-bridge/.bridge_key" 2>/dev/null || echo "")
+            if echo "$resp" | grep -q '"ok":true'; then
+                key=$(python3 -c "import json, base64, sys; d=json.loads('''$resp'''); sys.stdout.write(base64.b64decode(d['content']).decode().strip())" 2>/dev/null || echo "")
+            fi
+        elif is_port_open "$cp"; then
+            key=$(ssh -i "$SSH_KEY" -p "$cp" -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 "cat /home/hatch/muse-bridge/.bridge_key 2>/dev/null" 2>/dev/null | tr -d '\r\n' || echo "")
+        fi
+
+        if [ -n "$key" ]; then
+            echo -e "${GREEN}✓ Kunci ditemukan: ${key:0:8}...${NC}"
+            if [ -f /home/hatch/register_worker_9router.py ]; then
+                python3 /home/hatch/register_worker_9router.py "$id" "$mp" "$key"
+                echo -e "${GREEN}✓ VM ${id} berhasil disinkronkan ke 9Router dengan kunci terbaru!${NC}\n"
+            else
+                echo -e "${RED}Error: /home/hatch/register_worker_9router.py tidak ditemukan di VM 1.${NC}\n"
+            fi
+        else
+            echo -e "${YELLOW}⚠️ Belum dapat membaca kunci via control port untuk VM ${id}.${NC}"
+            echo -e "Pastikan setup-worker.sh terbaru sudah dijalankan di VM ${id}.\n"
+        fi
+    done
+}
+
 cmd_help() {
     echo -e "\n${CYAN}======================================================================${NC}"
     echo -e "${CYAN}${BOLD}       🌐 MUSE MESH CONTROL CLI — Central Master Orchestrator          ${NC}"
@@ -414,6 +464,7 @@ cmd_help() {
     echo -e "${YELLOW}Perintah Tersedia:${NC}"
     echo -e "  ${GREEN}mesh list${NC}                     Tampilkan status semua worker (Control & Model)"
     echo -e "  ${GREEN}mesh status${NC}                   Alias untuk 'mesh list'"
+    echo -e "  ${GREEN}mesh sync-keys [ID|all]${NC}       Sinkronisasi bridge key dari worker ke 9Router"
     echo -e "  ${GREEN}mesh ssh <ID>${NC}                 Buka shell interaktif ke worker via Mesh Agent"
     echo -e "  ${GREEN}mesh exec <ID|all> \"<cmd>\"${NC}   Jalankan perintah bash di worker tertentu/semua"
     echo -e "  ${GREEN}mesh push <ID> <src> <dst>${NC}    Kirim file dari VM 1 ke worker"
@@ -422,6 +473,7 @@ cmd_help() {
     echo -e "  ${GREEN}mesh help${NC}                     Tampilkan bantuan ini\n"
     echo -e "${YELLOW}Contoh Pemakaian:${NC}"
     echo -e "  mesh list"
+    echo -e "  mesh sync-keys"
     echo -e "  mesh ssh 2"
     echo -e "  mesh exec 2 \"df -h\""
     echo -e "  mesh exec 3 \"systemctl restart muse-bridge\""
@@ -433,6 +485,10 @@ cmd_help() {
 case "${1:-list}" in
     list|status|ls)
         cmd_list
+        ;;
+    sync-keys|sync|sync_keys)
+        shift
+        cmd_sync_keys "$@"
         ;;
     ssh|connect)
         shift
