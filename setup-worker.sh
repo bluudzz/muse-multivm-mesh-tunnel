@@ -190,29 +190,171 @@ if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
 fi
 echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
 
-# Cek apakah SSH daemon lokal tersedia di worker ini
-SSH_FWD_FLAG=""
-if ss -tln 2>/dev/null | grep -q ':22 ' || netstat -tln 2>/dev/null | grep -q ':22 '; then
-    echo -e "${GREEN}✓ SSH Server lokal terdeteksi aktif di port 22. Reverse SSH Control diaktifkan.${NC}"
-    SSH_FWD_FLAG="-R ${SSH_CONTROL_PORT}:127.0.0.1:22"
-else
-    echo -e "${YELLOW}ℹ SSH Server lokal tidak aktif di port 22. Berjalan dalam mode Model AI Mesh Tunnel.${NC}"
-fi
+# 6. Pasang Mesh Control Agent (Daemon Kendali Remote Berbasis Node.js Native)
+echo -e "${YELLOW}[3/6] Memasang Mesh Remote Control Agent...${NC}"
+AGENT_DIR="/home/hatch/www/mesh-agent"
+mkdir -p "$AGENT_DIR"
+cat > "${AGENT_DIR}/agent.js" << 'AGENT_CODE'
+const http = require('http');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
-# 6. Pasang dan Aktifkan systemd service
-echo -e "${YELLOW}[3/5] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
+const PORT = parseInt(process.env.MESH_AGENT_PORT || '20140', 10);
+const AUTH_TOKEN = process.env.MESH_AUTH_TOKEN || '';
+const WORKER_ID = process.env.WORKER_ID || 'unknown';
+
+function verifyAuth(req, res) {
+    if (!AUTH_TOKEN) return true;
+    const authHeader = req.headers['authorization'] || '';
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    const provided = match ? match[1].trim() : '';
+    if (provided !== AUTH_TOKEN.trim()) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: Invalid Mesh Token' }));
+        return false;
+    }
+    return true;
+}
+
+function parseJsonBody(req, callback) {
+    let body = '';
+    req.on('data', chunk => {
+        body += chunk;
+        if (body.length > 50 * 1024 * 1024) req.socket.destroy();
+    });
+    req.on('end', () => {
+        try {
+            const data = body ? JSON.parse(body) : {};
+            callback(null, data);
+        } catch (err) {
+            callback(err, null);
+        }
+    });
+}
+
+const server = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+            ok: true,
+            role: 'mesh-agent',
+            worker_id: WORKER_ID,
+            hostname: os.hostname(),
+            uptime: Math.floor(os.uptime()),
+            loadavg: os.loadavg(),
+            memory: { total: os.totalmem(), free: os.freemem() }
+        }));
+    }
+
+    if (!verifyAuth(req, res)) return;
+
+    if (req.method === 'POST' && req.url === '/exec') {
+        parseJsonBody(req, (err, data) => {
+            if (err || !data.command) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ ok: false, error: 'Bad Request: "command" required' }));
+            }
+            const timeoutMs = parseInt(data.timeout || '60000', 10);
+            exec(data.command, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, shell: '/bin/bash' }, (error, stdout, stderr) => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({
+                    ok: !error,
+                    exitCode: error ? (error.code ?? 1) : 0,
+                    stdout: stdout || '',
+                    stderr: stderr || (error ? error.message : '')
+                }));
+            });
+        });
+        return;
+    }
+
+    if (req.method === 'POST' && req.url === '/file/write') {
+        parseJsonBody(req, (err, data) => {
+            if (err || !data.path || data.content === undefined) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ ok: false, error: 'Bad Request: "path" and "content" required' }));
+            }
+            try {
+                fs.mkdirSync(path.dirname(data.path), { recursive: true });
+                const buf = Buffer.from(data.content, data.encoding || 'base64');
+                fs.writeFileSync(data.path, buf);
+                if (data.mode) fs.chmodSync(data.path, parseInt(data.mode, 8));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ ok: true, path: data.path, size: buf.length }));
+            } catch (e) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ ok: false, error: e.message }));
+            }
+        });
+        return;
+    }
+
+    if (req.method === 'GET' && req.url.startsWith('/file/read')) {
+        const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+        const targetPath = parsedUrl.searchParams.get('path');
+        if (!targetPath || !fs.existsSync(targetPath)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ ok: false, error: 'File not found' }));
+        }
+        try {
+            const buf = fs.readFileSync(targetPath);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ ok: true, path: targetPath, size: buf.length, content: buf.toString('base64') }));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Not found' }));
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+    console.log(`[mesh-agent] Worker ${WORKER_ID} listening on 127.0.0.1:${PORT}`);
+});
+AGENT_CODE
+
+cat > "/etc/systemd/system/mesh-agent.service" << EOF
+[Unit]
+Description=Muse Mesh Worker Remote Control Daemon (Worker ${WORKER_ID})
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${AGENT_DIR}
+Environment=MESH_AGENT_PORT=20140
+Environment=WORKER_ID=${WORKER_ID}
+Environment=MESH_AUTH_TOKEN=${TOKEN}
+ExecStart=/usr/bin/node ${AGENT_DIR}/agent.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now mesh-agent.service
+echo -e "${GREEN}✓ Mesh Control Agent aktif di port internal 20140.${NC}"
+
+# 7. Pasang dan Aktifkan systemd service Reverse Tunnel (Dual Tunnel: Model + Remote Control)
+echo -e "${YELLOW}[4/6] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT})
-After=network.target muse-bridge.service
-Wants=muse-bridge.service
+Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, Control: ${SSH_CONTROL_PORT})
+After=network.target muse-bridge.service mesh-agent.service
+Wants=muse-bridge.service mesh-agent.service
 
 [Service]
 Type=simple
 User=root
 EnvironmentFile=-/home/hatch/server-control/proxy.env
 Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${SSH_FWD_FLAG} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:20140 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 
@@ -225,7 +367,7 @@ systemctl enable "${SERVICE_NAME}.service"
 systemctl restart "${SERVICE_NAME}.service"
 echo -e "${GREEN}✓ Service ${SERVICE_NAME}.service aktif & berjalan!${NC}"
 
-# 7. Pasang ke recover.sh (Anti-VM Replace)
+# 8. Pasang ke recover.sh (Anti-VM Replace)
 RECOVER_DIR="/home/hatch/workspace/vm-recovery"
 mkdir -p "$RECOVER_DIR"
 RECOVER_SH="${RECOVER_DIR}/recover.sh"
@@ -234,31 +376,45 @@ if [ ! -f "$RECOVER_SH" ]; then
     chmod +x "$RECOVER_SH"
 fi
 
-echo -e "${YELLOW}[4/5] Mengamankan konfigurasi ke recover.sh...${NC}"
+echo -e "${YELLOW}[5/6] Mengamankan konfigurasi ke recover.sh...${NC}"
 if ! grep -q "${SERVICE_NAME}" "$RECOVER_SH"; then
     cat >> "$RECOVER_SH" << EOF
 
-# ---- Muse Multi-VM Reverse Tunnel Worker ${WORKER_ID} ----
-mkdir -p /root/.ssh /home/hatch/.ssh
-chmod 700 /root/.ssh /home/hatch/.ssh
-if [ -f /home/hatch/.ssh/id_mesh_master.pub ]; then
-  PUB=\$(cat /home/hatch/.ssh/id_mesh_master.pub)
-  grep -q "\$PUB" /root/.ssh/authorized_keys 2>/dev/null || echo "\$PUB" >> /root/.ssh/authorized_keys
-  grep -q "\$PUB" /home/hatch/.ssh/authorized_keys 2>/dev/null || echo "\$PUB" >> /home/hatch/.ssh/authorized_keys
+# ---- Muse Multi-VM Reverse Tunnel & Control Worker ${WORKER_ID} ----
+if [ ! -f /etc/systemd/system/mesh-agent.service ] && [ -d /home/hatch/www/mesh-agent ]; then
+  cat > /etc/systemd/system/mesh-agent.service << 'UNIT_AGENT'
+[Unit]
+Description=Muse Mesh Worker Remote Control Daemon (Worker ${WORKER_ID})
+After=network.target
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/hatch/www/mesh-agent
+Environment=MESH_AGENT_PORT=20140
+Environment=WORKER_ID=${WORKER_ID}
+Environment=MESH_AUTH_TOKEN=${TOKEN}
+ExecStart=/usr/bin/node /home/hatch/www/mesh-agent/agent.js
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+UNIT_AGENT
+  systemctl daemon-reload
+  systemctl enable --now mesh-agent.service
 fi
 
 if [ ! -f /etc/systemd/system/${SERVICE_NAME}.service ]; then
   cat > /etc/systemd/system/${SERVICE_NAME}.service << 'UNIT'
 [Unit]
-Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, SSH: ${SSH_CONTROL_PORT})
-After=network.target muse-bridge.service
-Wants=muse-bridge.service
+Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, Control: ${SSH_CONTROL_PORT})
+After=network.target muse-bridge.service mesh-agent.service
+Wants=muse-bridge.service mesh-agent.service
 [Service]
 Type=simple
 User=root
 EnvironmentFile=-/home/hatch/server-control/proxy.env
 Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${SSH_FWD_FLAG} ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:20140 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 [Install]
@@ -268,7 +424,6 @@ UNIT
   systemctl enable --now ${SERVICE_NAME}.service
 fi
 
-# Pastikan service tunnel selalu aktif
 if ! systemctl is-active --quiet ${SERVICE_NAME}.service; then
   systemctl restart ${SERVICE_NAME}.service || true
 fi
