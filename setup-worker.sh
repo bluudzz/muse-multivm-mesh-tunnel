@@ -190,11 +190,20 @@ if ! grep -q "Host ${HOST_ALIAS}" /root/.ssh/config 2>/dev/null; then
 fi
 echo -e "${GREEN}✓ Konfigurasi alias '${HOST_ALIAS}' berhasil ditambahkan.${NC}"
 
-# 6. Pasang dan Aktifkan systemd service (Dual Tunnel: Port Model + Port SSH Kendali)
+# Cek apakah SSH daemon lokal tersedia di worker ini
+SSH_FWD_FLAG=""
+if ss -tln 2>/dev/null | grep -q ':22 ' || netstat -tln 2>/dev/null | grep -q ':22 '; then
+    echo -e "${GREEN}✓ SSH Server lokal terdeteksi aktif di port 22. Reverse SSH Control diaktifkan.${NC}"
+    SSH_FWD_FLAG="-R ${SSH_CONTROL_PORT}:127.0.0.1:22"
+else
+    echo -e "${YELLOW}ℹ SSH Server lokal tidak aktif di port 22. Berjalan dalam mode Model AI Mesh Tunnel.${NC}"
+fi
+
+# 6. Pasang dan Aktifkan systemd service
 echo -e "${YELLOW}[3/5] Memasang service auto-reconnect ${SERVICE_NAME}.service...${NC}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT}, SSH: ${SSH_CONTROL_PORT})
+Description=SSH Reverse Tunnel Worker VM ${WORKER_ID} ke VM 1 (Model: ${REMOTE_PORT})
 After=network.target muse-bridge.service
 Wants=muse-bridge.service
 
@@ -203,7 +212,7 @@ Type=simple
 User=root
 EnvironmentFile=-/home/hatch/server-control/proxy.env
 Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${SSH_FWD_FLAG} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 
@@ -249,7 +258,7 @@ Type=simple
 User=root
 EnvironmentFile=-/home/hatch/server-control/proxy.env
 Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
-ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
+ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} ${SSH_FWD_FLAG} ${HOST_ALIAS}
 Restart=always
 RestartSec=5
 [Install]

@@ -90,6 +90,10 @@ cmd_list() {
             fi
         fi
 
+        if [ "$has_muse" = true ] && [ "$has_ssh" = false ]; then
+            ssh_status="${GRAY}N/A (AI Node)${NC}"
+        fi
+
         if [ "$has_ssh" = true ] || [ "$has_muse" = true ]; then
             count=$(( count + 1 ))
             if [ "$has_ssh" = true ] && [ -f "$SSH_KEY" ]; then
@@ -97,6 +101,14 @@ cmd_list() {
                 res=$(ssh -i "$SSH_KEY" -p "$sp" -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 "uptime -p 2>/dev/null || uptime | awk '{print \$3}'" 2>/dev/null | tr -d '\r\n' || echo "")
                 if [ -n "$res" ]; then
                     info="${CYAN}${res}${NC}"
+                fi
+            fi
+
+            if [ "$info" = "-" ] && [ "$has_muse" = true ]; then
+                local model_name
+                model_name=$(curl -s --connect-timeout 1 -m 2 --noproxy '*' "http://127.0.0.1:${mp}/v1/models" 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+                if [ -n "$model_name" ]; then
+                    info="${CYAN}${model_name}${NC}"
                 fi
             fi
 
@@ -123,9 +135,15 @@ cmd_ssh() {
     fi
 
     local port=$(get_ssh_port "$id")
+    local mp=$(get_model_port "$id")
     if ! is_port_open "$port"; then
-        echo -e "${YELLOW}Peringatan: Port SSH ${port} untuk VM ${id} tidak terdeteksi listening.${NC}"
-        echo -e "Mencoba tetap menyambung..."
+        if is_port_open "$mp"; then
+            echo -e "${YELLOW}ℹ Worker VM ${id} beroperasi dalam mode 'AI Model Node' (tanpa SSH Server).${NC}"
+            echo -e "Model AI aktif & dapat diakses via 9Router (Port ${mp})."
+            exit 0
+        fi
+        echo -e "${RED}Error: Port SSH ${port} untuk VM ${id} tidak terdeteksi listening.${NC}"
+        exit 1
     fi
 
     echo -e "${GREEN}Menghubungkan ke VM ${id} (127.0.0.1:${port}) sebagai user '${user}'...${NC}"
@@ -166,6 +184,16 @@ cmd_exec() {
         done
     else
         local port=$(get_ssh_port "$target")
+        local mp=$(get_model_port "$target")
+        if ! is_port_open "$port"; then
+            if is_port_open "$mp"; then
+                echo -e "${YELLOW}ℹ Worker VM ${target} terhubung sebagai AI Model Node (tanpa SSH Server).${NC}"
+                echo -e "Model AI aktif & melayani inferensi via 9Router (Port ${mp})."
+                exit 0
+            fi
+            echo -e "${RED}Error: VM ${target} (Port ${port}) tidak aktif.${NC}"
+            exit 1
+        fi
         echo -e "${GREEN}[VM ${target}] Eksekusi: ${YELLOW}${cmd}${NC}\n"
         ssh -i "$SSH_KEY" -p "$port" -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 "$cmd"
     fi
