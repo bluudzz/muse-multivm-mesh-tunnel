@@ -155,6 +155,12 @@ echo -e "${GREEN}✓ Kunci terpasang & akses kendali dari VM 1 diaktifkan.${NC}"
 
 # 5. Konfigurasi SSH Client (~/.ssh/config) untuk hatch dan root
 echo -e "${YELLOW}[2/5] Mengonfigurasi Cloudflare SSH Access...${NC}"
+CF_BIN=$(command -v cloudflared 2>/dev/null || echo "/usr/local/bin/cloudflared")
+PROXY_CMD="${CF_BIN} access ssh --hostname %h"
+if [ -f /home/hatch/server-control/proxy.env ]; then
+    PROXY_CMD="bash -c 'set -a; [ -f /home/hatch/server-control/proxy.env ] && . /home/hatch/server-control/proxy.env; exec ${CF_BIN} access ssh --hostname %h'"
+fi
+
 SSH_BLOCK="
 # ---- Muse Mesh Tunnel: Hub VM 1 (Worker ${WORKER_ID}) ----
 Host ${HOST_ALIAS}
@@ -163,7 +169,7 @@ Host ${HOST_ALIAS}
     IdentityFile ${SSH_KEY_HATCH}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-    ProxyCommand /usr/local/bin/cloudflared access ssh --hostname %h
+    ProxyCommand ${PROXY_CMD}
 "
 
 if ! grep -q "Host ${HOST_ALIAS}" /home/hatch/.ssh/config 2>/dev/null; then
@@ -188,6 +194,8 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
+EnvironmentFile=-/home/hatch/server-control/proxy.env
+Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
 ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i ${SSH_KEY_HATCH} -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
@@ -232,6 +240,8 @@ Wants=muse-bridge.service
 [Service]
 Type=simple
 User=root
+EnvironmentFile=-/home/hatch/server-control/proxy.env
+Environment=SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem
 ExecStart=/usr/bin/ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -N -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R ${REMOTE_PORT}:127.0.0.1:${LOCAL_PORT} -R ${SSH_CONTROL_PORT}:127.0.0.1:22 ${HOST_ALIAS}
 Restart=always
 RestartSec=5
@@ -252,16 +262,23 @@ else
     echo -e "${GREEN}✓ Sudah terdaftar di recover.sh.${NC}"
 fi
 
-# 8. Pasang Watchdog Cron Tiap 1 Menit
-echo -e "${YELLOW}[5/5] Memasang Watchdog Cron Tiap 1 Menit...${NC}"
+# 8. Pasang Watchdog Cron Tiap 1 Menit (jika crontab tersedia)
+echo -e "${YELLOW}[5/5] Memeriksa Watchdog Cron...${NC}"
 CRON_CMD="* * * * * /bin/bash /home/hatch/workspace/vm-recovery/recover.sh >/dev/null 2>&1"
-(crontab -l 2>/dev/null | grep -Fv "recover.sh"; echo "$CRON_CMD") | crontab -
-echo -e "${GREEN}✓ Cron watchdog tiap 1 menit berhasil aktif!${NC}"
+if command -v crontab >/dev/null 2>&1; then
+    (crontab -l 2>/dev/null | grep -Fv "recover.sh"; echo "$CRON_CMD") | crontab - || true
+    echo -e "${GREEN}✓ Cron watchdog tiap 1 menit berhasil aktif!${NC}"
+else
+    echo -e "${YELLOW}ℹ️ Utilitas crontab tidak tersedia di sistem ini (auto-restart dijaga oleh systemd & recovery.sh).${NC}"
+fi
 
 # 9. Otomasi Registrasi ke 9Router di VM 1 via SSH
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 echo -e "${YELLOW}⚡ [Otomasi 9Router] Mendaftarkan VM ${WORKER_ID} langsung ke 9Router di VM 1...${NC}"
-ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT}" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
+if [ -f /home/hatch/server-control/proxy.env ]; then
+    set -a; . /home/hatch/server-control/proxy.env; set +a
+fi
+ssh -F /home/hatch/.ssh/config -i "${SSH_KEY_HATCH}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 "${HOST_ALIAS}" "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT}" 2>/dev/null && echo -e "${GREEN}✓ Berhasil terdaftar otomatis di 9Router VM 1!${NC}" || echo -e "${YELLOW}⚠️ Pendaftaran otomatis 9Router dijadwalkan ulang saat tunnel tersinkronisasi.${NC}"
 
 echo -e "\n${GREEN}======================================================================${NC}"
 echo -e "${GREEN}${BOLD}🎉 SUKSES LENGKAP! WORKER VM ${WORKER_ID} TELAH AKTIF & TERKONEKSI!${NC}"
