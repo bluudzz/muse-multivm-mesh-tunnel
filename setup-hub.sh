@@ -8,6 +8,13 @@
 # ==============================================================================
 set -e
 
+# Otomatis muat environment proxy jika berjalan di ekosistem VM Hatch
+if [ -f /home/hatch/server-control/proxy.env ]; then
+    set -a; . /home/hatch/server-control/proxy.env; set +a
+elif [ -f /home/hatch/.proxy-env ]; then
+    set -a; . /home/hatch/.proxy-env; set +a
+fi
+
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
