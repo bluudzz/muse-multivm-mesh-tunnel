@@ -40,59 +40,44 @@ AI di VM 1 akan membalas dengan teks kode acak panjang bernama **MASTER TOKEN**.
 
 ### 2️⃣ Langkah 2: Hubungkan Worker Baru (VM 2, VM 3, dst.)
 
-Buka chat AI di **VM Worker** yang ingin Anda hubungkan.
+Buka chat AI di **VM Worker** yang ingin Anda hubungkan (misalnya di VM 2, VM 3, dst.).
 
-> ⚠️ **PENTING: Gunakan Nomor Urut Berbeda untuk Tiap Worker!**  
-> Setiap VM Worker baru **WAJIB** menggunakan nomor urut yang berbeda (`2` untuk VM ke-2, `3` untuk VM ke-3, `4` untuk VM ke-4, dst.) agar port jaringan tidak bentrok di VM 1.
+> 💡 **Trik Praktis (Tanpa Perlu Edit Teks di Chat):**  
+> Anda tidak perlu repot mengedit teks perintah di chat. Cukup **salin teks prompt di bawah ini mentah-mentah**, lalu kirim ke AI Worker. Si AI akan secara otomatis menanyakan 3 data yang diperlukan langsung kepada Anda di chat!
 
-#### 📝 Format Prompt Generik (Untuk Semua VM Worker):
-Salin format di bawah ini, sesuaikan `<NOMOR_WORKER>`, masukkan domain SSH VM 1 dan Token dari Langkah 1:
+#### 💬 Salin & Kirim Prompt Ini ke AI di VM Worker:
 
 ```text
-Tolong hubungkan server ini sebagai Worker Node (VM <NOMOR_WORKER>) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+Saya ingin menghubungkan server ini sebagai Worker Node ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
 
-Jalankan perintah instalasi berikut di terminal sistem:
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker <NOMOR_WORKER> --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
+⚠️ ATURAN SEBELUM EKSEKUSI:
+Jangan jalankan perintah instalasi dulu. Tolong tanyakan kepada saya 3 data berikut:
+1. Berapa Nomor Worker untuk VM ini? (contoh: 2 untuk VM ke-2, 3 untuk VM ke-3, dst.)
+2. Apa Hostname / Domain SSH VM 1? (contoh: ssh.ourme.my.id atau IP publik VM 1)
+3. Apa Master Token Kunci Induk dari VM 1?
 
-Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker<NOMOR_WORKER> dan muse-bridge sudah aktif (running).
+Setelah saya memberikan ketiga data tersebut, jalankan perintah instalasi berikut di terminal:
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker <NOMOR_DARI_USER> --host <HOST_DARI_USER> --token "<TOKEN_DARI_USER>"
+
+Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker<NOMOR> dan muse-bridge sudah aktif (running).
 ```
 
 ---
 
-#### 📋 Pilihan Cepat Siap Salin Berdasarkan Urutan VM:
-
-- **🟢 Jika Anda sedang membuka VM ke-2:**
-  ```text
-  Tolong hubungkan server ini sebagai Worker Node (VM 2) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
-
-  Jalankan perintah instalasi berikut di terminal sistem:
-  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 2 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
-
-  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker2 dan muse-bridge sudah aktif (running).
-  ```
-
-- **🟢 Jika Anda sedang membuka VM ke-3:**
-  ```text
-  Tolong hubungkan server ini sebagai Worker Node (VM 3) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
-
-  Jalankan perintah instalasi berikut di terminal sistem:
-  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 3 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
-
-  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker3 dan muse-bridge sudah aktif (running).
-  ```
-
-- **🟢 Jika Anda sedang membuka VM ke-4:**
-  ```text
-  Tolong hubungkan server ini sebagai Worker Node (VM 4) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
-
-  Jalankan perintah instalasi berikut di terminal sistem:
-  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 4 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
-
-  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker4 dan muse-bridge sudah aktif (running).
-  ```
+#### 🔄 Contoh Alur Balasan dari AI di Worker:
+1. Anda mengirim prompt di atas.
+2. AI Worker akan membalas:  
+   *"Baik! Sebelum saya mulai, tolong berikan 3 data: (1) Nomor Worker, (2) Domain SSH VM 1, dan (3) Master Token?"*
+3. Anda cukup menjawab di chat, misalnya:  
+   ```text
+   1. 2
+   2. ssh.ourme.my.id
+   3. LS0tLS1CRUdJTiBPUEVOU1NIIFBSSV...
+   ```
+4. AI Worker akan otomatis merangkai dan menjalankan instalasi sampai selesai!
 
 🎉 **Selesai!**  
-Begitu AI worker membalas sukses, model AI worker langsung terdaftar di 9Router VM 1, dan VM 1 kini memiliki akses penuh untuk mengendalikan worker tersebut!
+Begitu AI worker melapor sukses, model AI worker langsung terdaftar di 9Router VM 1, dan VM 1 kini memiliki akses penuh untuk mengendalikan worker tersebut!
 
 ---
 
