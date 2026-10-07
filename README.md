@@ -40,29 +40,56 @@ AI di VM 1 akan membalas dengan teks kode acak panjang bernama **MASTER TOKEN**.
 
 ### 2️⃣ Langkah 2: Hubungkan Worker Baru (VM 2, VM 3, dst.)
 
-Buka chat AI di **VM Worker** yang ingin dihubungkan (contohnya VM 2).  
-Salin prompt di bawah ini, **ganti teks di dalam tanda `<...>`** dengan data Anda, lalu kirim ke AI di VM Worker:
+Buka chat AI di **VM Worker** yang ingin Anda hubungkan.
+
+> ⚠️ **PENTING: Gunakan Nomor Urut Berbeda untuk Tiap Worker!**  
+> Setiap VM Worker baru **WAJIB** menggunakan nomor urut yang berbeda (`2` untuk VM ke-2, `3` untuk VM ke-3, `4` untuk VM ke-4, dst.) agar port jaringan tidak bentrok di VM 1.
+
+#### 📝 Format Prompt Generik (Untuk Semua VM Worker):
+Salin format di bawah ini, sesuaikan `<NOMOR_WORKER>`, masukkan domain SSH VM 1 dan Token dari Langkah 1:
 
 ```text
-Tolong hubungkan server ini sebagai Worker Node (VM 2) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+Tolong hubungkan server ini sebagai Worker Node (VM <NOMOR_WORKER>) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
 
 Jalankan perintah instalasi berikut di terminal sistem:
-curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 2 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
+curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker <NOMOR_WORKER> --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
 
-Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker2 dan muse-bridge sudah aktif (running).
+Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker<NOMOR_WORKER> dan muse-bridge sudah aktif (running).
 ```
 
-> 💡 **Contoh pengisian nyata:**
-> ```text
-> Tolong hubungkan server ini sebagai Worker Node (VM 2) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
-> 
-> Jalankan perintah instalasi berikut di terminal sistem:
-> curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 2 --host ssh.ourme.my.id --token "LS0tLS1CRUdJTiBPUEVOU1NIIFBSSV..."
-> 
-> Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker2 dan muse-bridge sudah aktif (running).
-> ```
+---
 
-*(Untuk VM 3, VM 4, dst.: Cukup ubah angka `2` menjadi `3`, `4`, dst.)*
+#### 📋 Pilihan Cepat Siap Salin Berdasarkan Urutan VM:
+
+- **🟢 Jika Anda sedang membuka VM ke-2:**
+  ```text
+  Tolong hubungkan server ini sebagai Worker Node (VM 2) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+
+  Jalankan perintah instalasi berikut di terminal sistem:
+  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 2 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
+
+  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker2 dan muse-bridge sudah aktif (running).
+  ```
+
+- **🟢 Jika Anda sedang membuka VM ke-3:**
+  ```text
+  Tolong hubungkan server ini sebagai Worker Node (VM 3) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+
+  Jalankan perintah instalasi berikut di terminal sistem:
+  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 3 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
+
+  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker3 dan muse-bridge sudah aktif (running).
+  ```
+
+- **🟢 Jika Anda sedang membuka VM ke-4:**
+  ```text
+  Tolong hubungkan server ini sebagai Worker Node (VM 4) ke Server Utama (VM 1) menggunakan Muse Mesh Tunnel.
+
+  Jalankan perintah instalasi berikut di terminal sistem:
+  curl -sSL https://raw.githubusercontent.com/bluudzz/muse-multivm-mesh-tunnel/main/setup-worker.sh | bash -s -- --worker 4 --host <DOMAIN_SSH_VM1> --token "<TOKEN_DARI_LANGKAH_1>"
+
+  Setelah selesai, periksa dan laporkan apakah service reverse-tunnel-worker4 dan muse-bridge sudah aktif (running).
+  ```
 
 🎉 **Selesai!**  
 Begitu AI worker membalas sukses, model AI worker langsung terdaftar di 9Router VM 1, dan VM 1 kini memiliki akses penuh untuk mengendalikan worker tersebut!
