@@ -83,7 +83,7 @@ cmd_list() {
 
         if is_port_open "$mp"; then
             has_muse=true
-            if curl -s --connect-timeout 1 "http://127.0.0.1:${mp}/health" >/dev/null 2>&1; then
+            if curl -s --connect-timeout 1 -m 2 --noproxy '*' "http://127.0.0.1:${mp}/health" >/dev/null 2>&1; then
                 muse_status="${GREEN}ACTIVE (200)${NC}"
             else
                 muse_status="${YELLOW}LISTENING${NC}"
