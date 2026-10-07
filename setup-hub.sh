@@ -103,6 +103,33 @@ if [ -f /home/hatch/scripts/mesh-ctl.sh ] && [ ! -f /usr/local/bin/mesh ]; then
   cp /home/hatch/scripts/mesh-ctl.sh /usr/local/bin/mesh
   chmod +x /usr/local/bin/mesh
 fi
+
+# Restore mesh-watchdog timer jika VM direplace
+if [ ! -f /etc/systemd/system/mesh-watchdog.service ]; then
+  cat > /etc/systemd/system/mesh-watchdog.service << 'UNIT'
+[Unit]
+Description=Muse Mesh Key Synchronization Watchdog
+After=network.target 9router.service
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/mesh sync-keys
+UNIT
+fi
+if [ ! -f /etc/systemd/system/mesh-watchdog.timer ]; then
+  cat > /etc/systemd/system/mesh-watchdog.timer << 'UNIT'
+[Unit]
+Description=Run Muse Mesh Key Synchronization Watchdog Every Minute
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now mesh-watchdog.timer
+fi
 EOF
         echo -e "${GREEN}✓ Berhasil diamankan di recover.sh.${NC}"
     else
@@ -110,8 +137,8 @@ EOF
     fi
 fi
 
-# 5. Pasang CLI Orchestrator 'mesh' untuk Mengendalikan Worker
-echo -e "${YELLOW}[4/5] Memasang Tool Kendali Pusat 'mesh' di VM 1...${NC}"
+# 5. Pasang CLI Orchestrator 'mesh' & Auto-Sync Watchdog di VM 1
+echo -e "${YELLOW}[4/5] Memasang Tool Kendali Pusat 'mesh' & Watchdog di VM 1...${NC}"
 mkdir -p /home/hatch/scripts /usr/local/bin
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/scripts/mesh-ctl.sh" ]; then
@@ -124,6 +151,31 @@ else
     fi
 fi
 chmod +x /home/hatch/scripts/mesh-ctl.sh /usr/local/bin/mesh 2>/dev/null || true
+
+# Pasang service & timer auto-sync watchdog di VM 1
+cat > /etc/systemd/system/mesh-watchdog.service << 'UNIT'
+[Unit]
+Description=Muse Mesh Key Synchronization Watchdog
+After=network.target 9router.service
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/mesh sync-keys
+UNIT
+
+cat > /etc/systemd/system/mesh-watchdog.timer << 'UNIT'
+[Unit]
+Description=Run Muse Mesh Key Synchronization Watchdog Every Minute
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now mesh-watchdog.timer 2>/dev/null || true
 
 # Tambahkan alias SSH client config untuk kemudahan (ssh vm2, ssh vm3, dst.)
 SSH_CONF_BLOCK="

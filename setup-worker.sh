@@ -427,6 +427,11 @@ fi
 if ! systemctl is-active --quiet ${SERVICE_NAME}.service; then
   systemctl restart ${SERVICE_NAME}.service || true
 fi
+
+# Otomasi sinkronisasi key ke 9Router VM 1 saat pemulihan VM
+WK_KEY=""
+[ -f /home/hatch/muse-bridge/.bridge_key ] && WK_KEY=\$(cat /home/hatch/muse-bridge/.bridge_key 2>/dev/null | tr -d '\r\n')
+ssh -F /home/hatch/.ssh/config -i /home/hatch/.ssh/id_mesh_master -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${HOST_ALIAS} "python3 /home/hatch/register_worker_9router.py ${WORKER_ID} ${REMOTE_PORT} '\$WK_KEY'" 2>/dev/null || true
 EOF
     echo -e "${GREEN}✓ Berhasil diamankan di recover.sh.${NC}"
 else
