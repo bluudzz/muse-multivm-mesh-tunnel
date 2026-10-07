@@ -45,9 +45,10 @@ Gunakan tool **`mesh`** di VM 1 (bisa lewat Chat AI atau Terminal):
 
 | Perintah | Fungsi |
 | :--- | :--- |
-| `mesh list` | Cek status online semua worker (SSH & Model AI) |
-| `mesh ssh 2` | Masuk ke terminal shell VM 2 langsung |
-| `mesh exec 2 "uptime"` | Jalankan perintah di VM 2 dari VM 1 |
+| `mesh list` | Cek status online semua worker (Control & Model AI) |
+| `mesh sync-keys` | Sinkronisasi otomatis bridge key worker ke 9Router (Anti-401) |
+| `mesh ssh 2` | Buka terminal shell interaktif ke VM 2 langsung |
+| `mesh exec 2 "uptime"` | Jalankan perintah bash di VM 2 dari VM 1 |
 | `mesh exec all "df -h"` | Jalankan perintah serentak ke SEMUA worker |
 | `mesh push 2 <lokal> <remote>` | Kirim file dari VM 1 ke VM 2 |
 | `mesh pull 2 <remote> <lokal>` | Ambil file dari VM 2 ke VM 1 |
